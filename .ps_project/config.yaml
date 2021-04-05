@@ -1,12 +1,12 @@
 # .ps_project/config.yaml:
 
-version: 2
+version: 1
 
 workflows:
   experiment-workflow:
     steps:
       -
-        name: "my-experiment"
+        name: "my-experiment1"
         command: experiment.run_single_node
         params:
           command: python mnist.py
