@@ -1,3 +1,6 @@
+# image files, they can be generated on a local machine as transferring between git would take a long time
+*.tif
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
