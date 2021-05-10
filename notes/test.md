@@ -1,2 +1,0 @@
-# Test Note Markdown file #
-

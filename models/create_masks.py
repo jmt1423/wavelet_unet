@@ -1,16 +1,23 @@
-import os
+"""
+This script creates masks of the two separate 
+.tif images using rasterio and fiona.
+
+To create the raster masks yourself the files must match:
+    YellowFlowers1.shp == 10meter_ortho_R1C3
+    YellowFlowers2.shq == 10meter_ortho_R1C4
+
+Method taken from the rasterio docs: 
+    https://rasterio.readthedocs.io/en/latest/topics/masking-by-shapefile.html
+"""
 from PIL import Image
-from torch.utils.data import Dataset
-import numpy as np
 import fiona
 import rasterio
 import rasterio.mask
-import time
 
 Image.MAX_IMAGE_PIXELS = 400000000
 
 # creating masks for segmentation
-with fiona.open("../drone_data/flower_shapefile_1_2/YellowFlowers1.shp",
+with fiona.open("../drone_data/flower_shapefile_1_2/YellowFlowers2.shp",
                 "r") as shapefile:
     shapes = [feature["geometry"] for feature in shapefile]
 
@@ -28,8 +35,11 @@ out_meta.update({
 with rasterio.open("RGB.byte.masked.tif", "w", **out_meta) as dest:
     dest.write(out_image)
 
+# show the newly created masked raster image
 im = Image.open("RGB.byte.masked.tif")
 im.show()
+
+# These lines just test that I am able to open the tif files using PIL
 # im = Image.open('../drone_data/10meter_ortho_R1C3.tif')
 # im.show()
 

@@ -11,3 +11,9 @@ cannot find or create a mask for the chosen image.
 
 For a start I have saved each mask to a masks directory inside the drone_data
 main directory.
+
+======= *2021-05-10 17:37* =======
+
+As of now, the UNET trains on the single given image and a mask created from the
+given shape files. However The predicted results is just an entire screen of
+white, so I think we need more data to do any serious training on the model.
