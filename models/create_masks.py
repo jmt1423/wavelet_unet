@@ -9,17 +9,12 @@ import time
 
 Image.MAX_IMAGE_PIXELS = 400000000
 
-im = Image.open('./RGB.byte.masked.tif')
-im.show()
-
-time.sleep(20)
-
 # creating masks for segmentation
 with fiona.open("../drone_data/flower_shapefile_1_2/YellowFlowers1.shp",
                 "r") as shapefile:
     shapes = [feature["geometry"] for feature in shapefile]
 
-with rasterio.open("../drone_data/10meter_ortho_R1C3.tif") as src:
+with rasterio.open("../drone_data/10meter_ortho_R1C4.tif") as src:
     out_image, out_transform = rasterio.mask.mask(src, shapes, crop=True)
     out_meta = src.meta
 
@@ -32,6 +27,9 @@ out_meta.update({
 
 with rasterio.open("RGB.byte.masked.tif", "w", **out_meta) as dest:
     dest.write(out_image)
+
+im = Image.open("RGB.byte.masked.tif")
+im.show()
 # im = Image.open('../drone_data/10meter_ortho_R1C3.tif')
 # im.show()
 
