@@ -1,5 +1,5 @@
 """
-This script creates the dataset functions and dataloaders 
+This script creates the dataset functions and dataloaders
 for the UNET architecture.
 """
 

@@ -12,12 +12,43 @@ Method taken from the rasterio docs:
 from PIL import Image
 import fiona
 import rasterio
+import time
 import rasterio.mask
+import cv2
+import numpy as np
+from imutils.perspective import four_point_transform
+from image_slicer import slice
+from image_slicer import save_tiles
+import os
 
 Image.MAX_IMAGE_PIXELS = 400000000
 
+test_image = Image.open('../drone_data/train_images/_01_01.tiff')
+test_image.show()
+print('hi done')
+time.sleep(100)
+# split image for training into 100 sections
+tiles = slice('../drone_data/10meter_ortho_R1C3.tif', 100, save=False)
+save_tiles(tiles, '../drone_data/train_images/', format='TIFF')
+# print(type(tiles[0]))
+print('done')
+time.sleep(100)
+
+# img = cv2.imread('../drone_data/train_images/10meter_ortho_R1C3.tif')
+
+# print('done')
+# train_image = Image.open('../drone_data/val_images/10meter_ortho_R1C4.tif')
+# print(train_image.size)
+# train_image.show()
+# train_image.show()
+# train_mask = Image.open('../drone_data/val_masks/10meter_ortho_R1C4.tif')
+# print(train_mask.size)
+# train_mask.show()
+
+time.sleep(100)
+
 # creating masks for segmentation
-with fiona.open("../drone_data/flower_shapefile_1_2/YellowFlowers2.shp",
+with fiona.open("../drone_data/flower_shapefile_1_2/YellowFlowers1.shp",
                 "r") as shapefile:
     shapes = [feature["geometry"] for feature in shapefile]
 
