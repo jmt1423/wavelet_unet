@@ -25,7 +25,6 @@ Image.MAX_IMAGE_PIXELS = 400000000
 
 test_image = Image.open('../drone_data/train_images/_01_01.tiff')
 test_image.show()
-print('hi done')
 time.sleep(100)
 # split image for training into 100 sections
 tiles = slice('../drone_data/10meter_ortho_R1C3.tif', 100, save=False)
