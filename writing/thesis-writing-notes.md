@@ -15,3 +15,5 @@ project at the end?
 * So as I researched more into some of these methods and techniques, I started
   to think that this was a soil coverage classification issue which is why I
   decided to talk about why it is needed and how these technologies can help.
+
+* Maybe reduce background section and go into more detail in the later sections?
