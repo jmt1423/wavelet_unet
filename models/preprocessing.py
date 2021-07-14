@@ -28,7 +28,14 @@ Image.MAX_IMAGE_PIXELS = 800000000
 
 # =============================================================================
 # combine tiff files to extract tiles
+#
+# The merging of these files subsequently removes all black values surrounding
+# the field.
+#
+# This has allowed me to quickly create tiled training images without needing
+# to delete all pixels with black values.
 # =============================================================================
+
 items = [
     '/Users/jonthomann/Documents/research/projects/msc_thesis/drone_data/drone_images_labels/10meter_ortho_R1C3_1.tif',
     '/Users/jonthomann/Documents/research/projects/msc_thesis/drone_data/drone_images_labels/10meter_ortho_R1C4_2.tif'
@@ -59,8 +66,3 @@ merged.rio.to_raster('./test_raster.tif')
 
 # get pixel values of image
 image = merged.values
-
-# =============================================================================
-# tiling was done in this file, however qgis made splitting the images much
-# easier, roughly 30 lines of code removed.
-# =============================================================================
