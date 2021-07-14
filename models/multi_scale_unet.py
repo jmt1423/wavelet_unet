@@ -3,6 +3,46 @@ import torch.nn as nn
 import torchvision.transforms.functional as TF
 
 
+class ProjectionLayer(nn.Module):
+    """
+    This class is just contains a single 1x1 convolution layer. Otherwise known
+    as a projection layer, this allows me to adjust the depth of all feature
+    maps at will.
+
+    The main usage of this class is to match the feature map depth of the 
+    encoder to the decoder when passing the transformed data through the 
+    skip connections.
+    """
+    def __init__(self, in_channels, out_channels):
+        """
+        initialize projection layer
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.softconv = nn.Conv2d(self.in_channels,
+                                  self.out_channels,
+                                  kernel_size=1,
+                                  stride=1,
+                                  padding=0)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        """
+        Forward pass data into the convolution layer, followed by a ReLU
+        non-linearity
+
+        :x: tensor object being passed into convolution layer
+        :returns: projected feature map
+
+        """
+        x = self.softconv(x)
+        x = self.relu(x)
+        return x
+
+
 class DoubleConv(nn.Module):
     """Docstring for DoubleConv. """
     def __init__(self, in_channels, out_channels):
@@ -53,6 +93,9 @@ class UNET(nn.Module):
         super(UNET, self).__init__()
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
+
+        # TODO: Remove maxpool and replace with wavelet transform methods
+        # that have been implemented in wavelet_transforms.py
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Down scaling
@@ -61,6 +104,7 @@ class UNET(nn.Module):
             in_channels = feature
 
         # Up scaling
+        # TODO: replace with inverse discreet wavelet transform
         for feature in reversed(features):
             self.ups.append(
                 nn.ConvTranspose2d(
