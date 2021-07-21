@@ -103,7 +103,7 @@ def create_mask(input_file, output_file, shapes1, shapes2):
     """
     while True:
         try:
-            with rasterio.open('../../drone_data/testing/' +
+            with rasterio.open('../../drone_data/training/images/' +
                                input_file) as src:
                 out_image, out_transform = rasterio.mask.mask(src,
                                                               shapes1,
@@ -115,7 +115,7 @@ def create_mask(input_file, output_file, shapes1, shapes2):
                 'width': out_image.shape[2],
                 'transform': out_transform
             })
-            with rasterio.open(combined, 'w', **out_meta) as dest:
+            with rasterio.open(input_file, 'w', **out_meta) as dest:
                 dest.write(out_image)
             break
         except ValueError:
@@ -124,7 +124,7 @@ def create_mask(input_file, output_file, shapes1, shapes2):
 
 
 num = 0
-for item in os.listdir('../../drone_data/testing'):
+for item in os.listdir('../../drone_data/training/images/'):
     splitname = os.path.splitext(item)[0]
     combined = splitname + '_' + str(num) + '.tif'
     print(item)

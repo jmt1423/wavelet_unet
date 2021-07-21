@@ -7,7 +7,7 @@ from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
-from baseline_model import UNET
+from multi_scale_unet import UNET
 from PIL import Image
 from utils import (
     load_checkpoint,
@@ -25,8 +25,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 16
 NUM_EPOCHS = 3
 NUM_WORKERS = 2
-IMAGE_HEIGHT = 160
-IMAGE_WIDTH = 240
+IMAGE_HEIGHT = 512
+IMAGE_WIDTH = 512
 PIN_MEMORY = True
 LOAD_MODEL = False  # set to true if you want to load the created checkpoint
 TRAIN_IMG_DIR = "../drone_data/train_images/"
