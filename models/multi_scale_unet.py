@@ -134,13 +134,46 @@ class UNET(nn.Module):
         :returns: TODO
 
         """
-        skip_connections = []
-        for down in self.downs:
-            x = down(x)
-            skip_connections.append(x)
+        # lists of tensor objects containing lowpass and highpass
+        # filter coefficients
+        wave_feature_connector = []
+
+        # before using DWT and IDWT put the intitial tensor through a double
+        # conv block to extract features.
+        x = self.downs[0](x)
+
+        print("=============================================")
+        # Calculate DWT
+        Yl, Yh = self.dwtf(x)
+        print(Yl.shape)
+        print(Yh[0].shape)
+        print(Yh[1].shape)
+        print(Yh[2].shape)
+
+        # add new dimension to Yl coefficients for stacking
+        Yl = Yl[:, :, None, :, :]
+
+        stacked_tensor = torch.stack([Yl, Yh])
+        print(stacked_tensor.shape)
+        print("stack success!")
+
+        print("=============================================")
+
+        # split Yh and concatenate coefficients
+
+        # looping one less time as we have already gone through a doubleconv
+        # and DWT layer
+        for down in self.downs[1:]:
+            # use concatenated features as input into doubleconv
+            Yh = down(Yh)
+            Yl = down(Yl)
+
+            # add features into connector
+            skip_connection_lowpass.append(Yl)
+            skip_connection_highpass.append(Yh)
 
             # x = self.pool(x)
-            Yl, Yh = self.dwtf(x)
+            # calculate dwt transform of concatenated features
 
         x = self.bottleneck(x)
         skip_connections = skip_connections[::-1]
