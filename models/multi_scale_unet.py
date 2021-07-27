@@ -98,7 +98,7 @@ class UNET(nn.Module):
         self.mode = 'zero'
         self.J = 3
         self.dwtf = DWTForward(self.J, self.wave, self.mode).cuda()
-        self.idwt = DWTInverse(self.mode, self.wave).cuda()
+        self.idwt = DWTInverse(self.wave, self.mode).cuda()
 
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
