@@ -29,10 +29,10 @@ IMAGE_HEIGHT = 512
 IMAGE_WIDTH = 512
 PIN_MEMORY = True
 LOAD_MODEL = False  # set to true if you want to load the created checkpoint
-TRAIN_IMG_DIR = "../drone_data/train_images/"
-TRAIN_MASK_DIR = "../drone_data/train_masks/"
-VAL_IMG_DIR = "../drone_data/val_images/"
-VAL_MASK_DIR = "../drone_data/val_masks/"
+TRAIN_IMG_DIR = "/mmfs1/home/users/thomann/flower_image_segmentation/drone_data/train_images/"
+TRAIN_MASK_DIR = "/mmfs1/home/users/thomann/flower_image_segmentation/drone_data/train_masks/"
+VAL_IMG_DIR = "/mmfs1/home/users/thomann/flower_image_segmentation/drone_data/val_images/"
+VAL_MASK_DIR = "/mmfs1/home/users/thomann/flower_image_segmentation/drone_data/val_masks/"
 
 
 def train_fn(loader, model, optimizer, loss_fn, scaler):
