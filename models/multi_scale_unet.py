@@ -153,7 +153,7 @@ class UNET(nn.Module):
         # add new dimension to Yl coefficients for stacking
         Yl = Yl[:, :, None, :, :]
 
-        stacked_tensor = torch.stack([Yl, Yh])
+        stacked_tensor = torch.stack([Yl, Yh[0], Yh[1], Yh[2]])
         print(stacked_tensor.shape)
         print("stack success!")
 
