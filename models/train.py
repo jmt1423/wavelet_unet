@@ -125,10 +125,12 @@ def main():
         check_accuracy(val_loader, model, device=DEVICE)
 
         # print results to folder
-        save_predictions_as_imgs(val_loader,
-                                 model,
-                                 folder="saved_images/",
-                                 device=DEVICE)
+        save_predictions_as_imgs(
+            val_loader,
+            model,
+            folder=
+            "/mmfs1/home/users/thomann/flower_image_segmentation/models/saved_images/",
+            device=DEVICE)
 
 
 if __name__ == "__main__":
