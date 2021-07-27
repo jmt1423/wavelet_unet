@@ -15,7 +15,7 @@ from pytorch_wavelets import DWTForward, DWTInverse, DTCWTForward, DTCWTInverse
 
 def dwt_forward(tensor, wave, mode, J):
     """This method takes a pytorch tensor and manipulates it using a discrete
-    wavelet transform. 
+    wavelet transform.
 
     :tensor: a pytorch tensor of any size
     :wave: the wavelet transform to use
@@ -50,7 +50,7 @@ def dwt_inverse(Yl, Yh, wave, mode):
 
 def dtcwt_forward(tensor, biorthogonal, qshift, J):
     """This method takes a tensor and calculates the dual-tree complex wavelet
-    transform. The method was found in a paper written by Ivan W. Selesnick, 
+    transform. The method was found in a paper written by Ivan W. Selesnick,
     Richard G. Baraniuk, and Nick G. Kingsbury in 2005 and could have some
     advantages over a DWT for extremely high resolution geometric imagery.
 
@@ -75,7 +75,6 @@ def dtcwt_forward(tensor, biorthogonal, qshift, J):
 def dtcwt_inverse(yl, yh, biorthogonal, qshift):
     """method calculates the inverse of the dual-tree complex wavelet transform
 
-
     :yl: lowpass coefficients
     :yh: bandpass coefficients
     :biorthogonal: first level biorthogonal wavelet filters
@@ -89,6 +88,7 @@ def dtcwt_inverse(yl, yh, biorthogonal, qshift):
 
 
 if __name__ == '__main__':
-    Yl, Yh = dwt_forward(torch.randn(10, 5, 64, 64), 'haar', 'zero', 3)
-    Y = dwt_inverse(Yl, Yh, 'haar', 'zero')
-    print(Y.shape)
+    tensor = torch.randn(10, 5, 60, 60)
+    dwtf = Dwt_Forward('haar', 'zero', 3)
+    x = dwtf(tensor)
+    print(x[0].shape)

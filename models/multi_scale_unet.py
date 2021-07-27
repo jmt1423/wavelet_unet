@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision.transforms.functional as TF
+from pytorch_wavelets import DWTForward, DWTInverse, DTCWTForward, DTCWTInverse
 
 
 class ProjectionLayer(nn.Module):
@@ -91,6 +92,14 @@ class UNET(nn.Module):
 
         """
         super(UNET, self).__init__()
+
+        # initialize wavelet parameters
+        self.wave = 'haar'
+        self.mode = 'zero'
+        self.J = 3
+        self.dwtf = DWTForward(self.J, self.wave, self.mode)
+        self.idwt = DWTInverse(self.mode, self.wave)
+
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
 
@@ -130,7 +139,8 @@ class UNET(nn.Module):
             x = down(x)
             skip_connections.append(x)
 
-            x = self.pool(x)
+            # x = self.pool(x)
+            Yl, Yh = self.dwtf(x)
 
         x = self.bottleneck(x)
         skip_connections = skip_connections[::-1]
