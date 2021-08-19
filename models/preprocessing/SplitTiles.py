@@ -3,10 +3,10 @@ from itertools import product
 import rasterio as rio
 from rasterio import windows
 
-in_path = '../../drone_data/testing/'
+in_path = '../../../../Downloads/'
 input_filename = 'clipped.tif'
 
-out_path = '../../drone_data/testing/'
+out_path = '../../../'
 output_filename = 'tile_{}-{}.tif'
 
 

@@ -15,17 +15,11 @@ import rioxarray
 from rioxarray import merge
 import numpy as np
 from rasterio.plot import show
-from imutils.perspective import four_point_transform
-import image_slicer
-from image_slicer import slice
-from image_slicer import save_tiles
 import os
 from rasterio import windows
 from itertools import product
-import shapely.vectorized
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from shapely.geometry import shape
 
 Image.MAX_IMAGE_PIXELS = 800000000
 
@@ -82,17 +76,17 @@ def merge_files():
 # Mask all tiled images
 # =============================================================================
 with fiona.open(
-        '../../drone_data/drone_images_labels/Yellow_flower_label/YellowFlowers1.shp'
+        '../../../Yellow_flower_label/YellowFlowers4.shp'
 ) as shapefile:
     shapes1 = [feature['geometry'] for feature in shapefile]
 
-with fiona.open(
-        '../../drone_data/drone_images_labels/Yellow_flower_label/YellowFlowers2.shp'
-) as shapefile:
-    shapes2 = [feature['geometry'] for feature in shapefile]
+# with fiona.open(
+#        '../../drone_data/drone_images_labels/Yellow_flower_label/YellowFlowers2.shp'
+# ) as shapefile:
+#    shapes2 = [feature['geometry'] for feature in shapefile]
 
 
-def create_mask(input_file, output_file, shapes1, shapes2):
+def create_mask(input_file, output_file, shapes1):
     """
     method to create a mask of a given input image
 
@@ -103,7 +97,7 @@ def create_mask(input_file, output_file, shapes1, shapes2):
     """
     while True:
         try:
-            with rasterio.open('../../drone_data/training/images/' +
+            with rasterio.open('../../../images/' +
                                input_file) as src:
                 out_image, out_transform = rasterio.mask.mask(src,
                                                               shapes1,
@@ -120,14 +114,14 @@ def create_mask(input_file, output_file, shapes1, shapes2):
             break
         except ValueError:
             print('shapefile does not match raster')
-            shapes1, shapes2 = shapes2, shapes1
+            # shapes1, shapes2 = shapes2, shapes1
 
 
 num = 0
-for item in os.listdir('../../drone_data/training/images/'):
+for item in os.listdir('../../../images/'):
     splitname = os.path.splitext(item)[0]
     combined = splitname + '_' + str(num) + '.tif'
     print(item)
-    create_mask(item, combined, shapes1, shapes2)
+    create_mask(item, combined, shapes1)
 
     num += 1

@@ -40,7 +40,7 @@ class FlowerDataset(Dataset):
         mask_path = os.path.join(self._mask_dir, self.images[index])
         image = np.array(Image.open(img_path).convert("RGB"))
         mask = np.array(Image.open(mask_path).convert("L"), dtype=np.float32)
-        mask[mask == 255.0] = 1.0
+        mask[mask == 255.0] = 1
 
         if self._transform is not None:
             augmentations = self._transform(image=image, mask=mask)

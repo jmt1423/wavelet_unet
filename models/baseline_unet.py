@@ -8,15 +8,34 @@ subband outputs the diagonal features from an input image.
 """
 
 import torch
-from torch._C import dtype
 from torch.functional import Tensor
-import torch.nn.functional as F
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms.functional as TF
 from pytorch_wavelets import DWTForward, DWTInverse, DTCWTForward, DTCWTInverse
 import torchvision.models as models
 import time
-from torch.autograd import Variable
+
+class DwtPyramidBlock(nn.Module):
+    """
+    This class takes as input a tensor of arbirtrary size, as the architecture
+    should be able to be plugged into other models, and runs it through a series of 
+    wavelet transforms that essentially down sample the image into four different bands
+    and three different scales.
+
+    With computation time considered, only the highpass scale 1 bandpass coefficients are
+    passed down the pyramid to increase multi-scale information gain.
+
+    Wavelet families tested: Haar, Daubechies, Complex Morlet Wavelets, Symlets
+    """
+
+    def __init__(self, family : str, mode : str):
+        super(DwtPyramidBlock, self).__init__()
+        self.family = family
+        self.mode = mode
+
+    def forward(self, x : Tensor):
+        print('hi')
 
 class DtcwtPyramidBlock(nn.Module):
     """
@@ -36,6 +55,43 @@ class DtcwtPyramidBlock(nn.Module):
     
     def forward(self, x : Tensor):
         print(x)
+
+
+class ProjectionLayer(nn.Module):
+    """
+    This class is just contains a single 1x1 convolution layer. Otherwise known
+    as a projection layer, this allows me to adjust the depth of all feature
+    maps at will.
+    The main usage of this class is to match the feature map depth of the 
+    encoder to the decoder when passing the transformed data through the 
+    skip connections.
+    """
+    def __init__(self, in_channels, out_channels):
+        """
+        initialize projection layer
+        """
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.softconv = nn.Conv2d(self.in_channels,
+                                  self.out_channels,
+                                  kernel_size=1,
+                                  stride=1,
+                                  padding=0)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        """
+        Forward pass data into the convolution layer, followed by a ReLU
+        non-linearity
+        :x: tensor object being passed into convolution layer
+        :returns: projected feature map
+        """
+        x = self.softconv(x)
+        x = self.relu(x)
+        return x
 
 
 class DoubleConv(nn.Module):
@@ -59,32 +115,8 @@ class DoubleConv(nn.Module):
         """
         return self.conv(x)
 
-class LinearConv(nn.Module):
-    """Docstring for LInearConv. """
-    def __init__(self, in_channels, out_channels):
-        """TODO: to be defined. """
-        super(LinearConv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(
-                in_channels, 
-                out_channels, 
-                kernel_size=1, 
-                stride=1, 
-                padding=0, 
-                bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-        )
 
-    def forward(self, x):
-        """feed forward network for u-net
-        :x: TODO
-        :returns: TODO
-        """
-        return self.conv(x)
-
-
-class UNET(nn.Module):
+class UNETablation(nn.Module):
     """Docstring for UNET. """
     def __init__(
         self,
@@ -100,10 +132,11 @@ class UNET(nn.Module):
         :256: TODO
         :512]: TODO
         """
-        super(UNET, self).__init__()
+        super(UNETablation, self).__init__()
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        
 
         # initialize wavelet transforms for use in forward
         self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
@@ -114,11 +147,8 @@ class UNET(nn.Module):
             mode='symmetric'
         ).cuda()
 
-        self.projection_layer = LinearConv(5120, 1024)
-
-        self.conv2dnew = nn.Conv2d(1024, 1024, kernel_size=1, stride=1, padding=0, bias=False)
-
         self.pretrained = models.resnext50_32x4d(pretrained=True)
+        self.projection_layer = ProjectionLayer(5120, 1024)
 
         # Down scaling
         for feature in features:
@@ -165,9 +195,6 @@ class UNET(nn.Module):
             # downscale using DWT, these features are not propogated down the network
             # they are used in tandem with skip connections to create more meaningful
             # data representations when we are upscaling images back to their original
-
-            #print('---------------x: ', x.shape)
-            #print('---------------x1: ', x1_hh.shape)
             
             skip_connections.append(x)
 
@@ -175,63 +202,17 @@ class UNET(nn.Module):
             # alongside pooling operations and concatenated with everything at the end
             x = self.pool(x)
 
-            # if temp_var > 0:
+            # if temp_var > 10000:
             #     yl, yh = self.dwtF(x1_hh)
-
-            #     #print('--yh before unbind: ', yh[0].shape)
 
             #     yh = torch.unbind(yh[0], dim=2)
             #     x1_hh = yh[0]
             #     wavelet_skips.append(x1_hh)
-                #print('--dwt after unbind: ', yh[0].shape)
-            
-                #print('=============hh: ', x1_hh.shape)
-
-            #print('=============final x: ', x.shape)
 
             # temp_var += 1
-        
+
+
         x = self.bottleneck(x)
-        # call wavelet pyramid
-        yl, yh = self.dwtF(x)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_0 = yh[0]
-
-        # pyramid layer 2
-        yl, yh = self.dwtF(hh_0)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_1 = yh[0]
-
-        # pyramid layer 3
-        yl, yh = self.dwtF(hh_1)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_2 = yh[0]
-
-        # pyramid layer 4
-        yl, yh = self.dwtF(hh_2)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_3 = yh[0]
-
-        # pad all diagonal wavelet decompositions to fit a 32Hx32W
-        hh_0 = F.pad(hh_0, (8,8,8,8),'constant', 0.0).contiguous()
-        hh_1 = F.pad(hh_1, (12,12,12,12),'constant', 0.0).contiguous()
-        hh_2 = F.pad(hh_2, (14,14,14,14),'constant', 0.0).contiguous()
-        hh_3 = F.pad(hh_3, (15,15,15,15),'constant', 0.0).contiguous()
-
-        #print(hh_0.shape, hh_1.shape, hh_2.shape, hh_3.shape)
-
-        concat_pyramid = torch.cat((hh_0, hh_1, hh_2, hh_3, x), dim=1)
-
-        x = self.projection_layer(concat_pyramid)
-
-        
-        #print(x.shape, x.type())
-        #time.sleep(30)
-
-        # print(x.type())
-
-
-
 
         skip_connections = skip_connections[::-1]
         # wavelet_skips = wavelet_skips[::-1]
@@ -250,17 +231,13 @@ class UNET(nn.Module):
             #     if x.shape != wavelet_skip.shape:
             #         x = TF.resize(x, size=wavelet_skip.shape[2:])
                 
-            #     #print('-=-=-=-=-=-=-=-=', wavelet_skip.shape, x.shape)
             #     concat_skip = torch.cat((wavelet_skip, x), dim=1)
 
-            #print('--------------', skip_connection.shape, x.shape)
-            #time.sleep(3)
             concat_skip = torch.cat((skip_connection, x), dim=1)
             x = self.ups[idx + 1](concat_skip)
             # temp2 += 1
-        
-        x = self.final_conv(x)
-        return x
+
+        return self.final_conv(x)
 
 
 def testArch():
@@ -268,7 +245,7 @@ def testArch():
     :returns: TODO
     """
     x = torch.randn((3, 1, 160, 160))
-    model = UNET(in_channels=1, out_channels=1)
+    model = UNETablation(in_channels=1, out_channels=1)
     preds = model(x)
     print(preds.shape)
     print(x.shape)
