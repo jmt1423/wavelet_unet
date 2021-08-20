@@ -42,9 +42,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 5
 NUM_EPOCHS = 200
 NUM_WORKERS = 2
-IMAGE_HEIGHT = 512
-IMAGE_WIDTH = 512
-MODEL_NAME = 'wavelet-unet-pyramid-noskips'
+IMAGE_HEIGHT = 256
+IMAGE_WIDTH = 256
+MODEL_NAME = 'wavelet'
 PIN_MEMORY = True
 LOAD_MODEL = False  # set to true if you want to load the created checkpoint
 TRAIN_IMG_DIR = "../drone_images/train_images/"
@@ -98,6 +98,7 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
 
         # update loop
         loop.set_postfix(loss=loss.item())
+        del loss, predictions
 
 
 def main():

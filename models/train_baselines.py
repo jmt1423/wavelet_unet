@@ -129,7 +129,7 @@ CLASSES = ['flower']
 ACTIVATION = 'sigmoid'
 DEVICE = 'cuda'
 
-model = smp.PAN(
+model = smp.Linknet(
     encoder_name=ENCODER,
     encoder_weights=ENCODER_WEIGHTS,
     classes=1,
@@ -161,7 +161,7 @@ run['parameters/activation'] = ACTIVATION
 run['parameters/encoder'] = ENCODER
 run['parameters/image_height'] = IMAGE_HEIGHT
 run['parameters/image_width'] = IMAGE_WIDTH
-run['parameters/model'] = 'PAN'
+run['parameters/model'] = 'LinkNet'
 run['parameters/learning_rate'] = LEARNING_RATE
 
 

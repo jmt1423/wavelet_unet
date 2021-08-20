@@ -18,6 +18,81 @@ import torchvision.models as models
 import time
 from torch.autograd import Variable
 
+
+class DwtPyramidBlock(nn.Module):
+    def __init__(self, J, mode, wave, depth, og_size_list):
+        super(DwtPyramidBlock, self).__init__()
+        self.J = J
+        self.mode = mode
+        self.wave = wave
+        self.depth = depth
+        self.og_size_list = og_size_list
+
+        self.dwtList = []
+
+        self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
+    
+    def forward(self, x):
+        """
+        This recursive function create a multi-scale representation of a given 
+        tensor object x using wavelet transforms.
+        """
+        if self.depth < 2:  # recursive step
+            yl, yh = self.dwtf(x.detach())  # get wavelet coefficients
+            feat = torch.unbind(yh[0], dim=2)  # get features (yl, yh -> (lh, hl, hh))
+            feat = feat[0]
+            self.dwtList.append(feat)  # append to list for later use
+            self.depth += 1
+            return self.forward(feat)  # create next layer of pyramid
+        elif self.depth == 2:  # end of pyramid
+            yl, yh = self.dwtf(x.detach())  # get final coefficients
+            feat = torch.unbind(yh[0], dim=2)
+            feat = feat[0]
+            self.dwtList.append(feat)
+
+            for i in range(len(self.dwtList)):  # pad each element in list for concatenation later
+                p_size = int(self.get_pad_size(self.dwtList[i]))  # gets the variable needed for padding
+
+                self.dwtList[i] = F.pad(  # pad list item i
+                    self.dwtList[i],
+                    (p_size, p_size, p_size, p_size),
+                    'constant',  # zero padding so constant value of 0's
+                    0
+                )  # .contiguous() - this might be needed depending on if pytorch yells at me :(
+            
+            # after padding is done, now we can concat all tensor objects together
+            final_pyramid = torch.cat((
+                self.dwtList[0],
+                self.dwtList[1],
+                self.dwtList[2],
+            ), dim=1)
+            self.dwtList = []
+            self.depth = 0
+            return final_pyramid
+
+    def get_pad_size(self, x):
+        """
+        method that takes the original tensor object height and
+        the given wavelet decomposed tensor to calculate the size 
+        needed to pad each tensor object before a torch.cat() is 
+        used.
+
+        Formula:
+        Given two tensors of size [B_1, C_1, H_1, W_1] and
+        [B_2, C_2, H_2, H_3] -->
+
+        to find the needed values to pad take:
+
+        (H1 - H2) / 2 = p_size : {H1 > H2}
+
+        """
+        h1 = self.og_size_list[3]
+        h2 = list(x.shape)[3]
+
+        return (h1-h2)/2
+
+
+
 class DtcwtPyramidBlock(nn.Module):
     """
     This method is similar to the above wavelet pyramid method, however it uses 
@@ -107,16 +182,10 @@ class UNET(nn.Module):
 
         # initialize wavelet transforms for use in forward
         self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
-        self.dtcwtF = DTCWTForward(
-            biort='near_sym_a', 
-            qshift='qshift_a',
-            J=3,
-            mode='symmetric'
-        ).cuda()
 
-        self.projection_layer = LinearConv(5120, 1024)
+        self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave='haar', depth=0, og_size_list=[0, 0, 16, 16])
 
-        self.conv2dnew = nn.Conv2d(1024, 1024, kernel_size=1, stride=1, padding=0, bias=False)
+        self.projection_layer = LinearConv(4096, 1024)
 
         self.pretrained = models.resnext50_32x4d(pretrained=True)
 
@@ -192,45 +261,14 @@ class UNET(nn.Module):
             # temp_var += 1
         
         x = self.bottleneck(x)
-        # call wavelet pyramid
-        yl, yh = self.dwtF(x)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_0 = yh[0]
 
-        # pyramid layer 2
-        yl, yh = self.dwtF(hh_0)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_1 = yh[0]
+        # call wavelet pyramid at bottom of u-net architecture
+        pyramid = self.dwt_pyramid_block(x)
+        x = torch.cat((x, pyramid), dim=1)  # concat pyramid and original input x
 
-        # pyramid layer 3
-        yl, yh = self.dwtF(hh_1)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_2 = yh[0]
-
-        # pyramid layer 4
-        yl, yh = self.dwtF(hh_2)
-        yh = torch.unbind(yh[0], dim=2)
-        hh_3 = yh[0]
-
-        # pad all diagonal wavelet decompositions to fit a 32Hx32W
-        hh_0 = F.pad(hh_0, (8,8,8,8),'constant', 0.0).contiguous()
-        hh_1 = F.pad(hh_1, (12,12,12,12),'constant', 0.0).contiguous()
-        hh_2 = F.pad(hh_2, (14,14,14,14),'constant', 0.0).contiguous()
-        hh_3 = F.pad(hh_3, (15,15,15,15),'constant', 0.0).contiguous()
-
-        #print(hh_0.shape, hh_1.shape, hh_2.shape, hh_3.shape)
-
-        concat_pyramid = torch.cat((hh_0, hh_1, hh_2, hh_3, x), dim=1)
-
-        x = self.projection_layer(concat_pyramid)
-
-        
-        #print(x.shape, x.type())
-        #time.sleep(30)
-
-        # print(x.type())
-
-
+        # now due to the large amount of channels, x should be put through a projection layer
+        # to reduce the number of feature channels in the architecture.
+        x = self.projection_layer(x)
 
 
         skip_connections = skip_connections[::-1]
