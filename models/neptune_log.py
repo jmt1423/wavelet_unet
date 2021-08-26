@@ -8,7 +8,7 @@ run = neptune.init(
     project=NEPTUNE_PROJECT,
     api_token=API_TOKEN,
     source_files=['*.py'],
-    run='FLOW-41'
+    run='FLOW-286'
 )
 
-run['parameters/model'] = 'DeepLabV3'
+run['parameters/model'] = 'dwt_horiz_unet'
