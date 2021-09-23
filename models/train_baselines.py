@@ -75,7 +75,7 @@ VAL_MASK_DIR = "../drone_images/val_masks_new/"
 IMAGE_HEIGHT = 512
 IMAGE_WIDTH = 512
 BATCH_SIZE = 5
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-2
 EPOCHS = 200
 
 train_transform = A.Compose([
@@ -85,8 +85,8 @@ train_transform = A.Compose([
     A.VerticalFlip(p=0.1),
     A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
     A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2, always_apply=False, p=0.5),
-    A.Downscale(scale_min=0.25, scale_max=0.25, interpolation=0, always_apply=False, p=0.5),
-    A.Emboss(alpha=(0.2, 0.5), strength=(0.2, 0.7), always_apply=False, p=0.5),
+    A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+    A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
     A.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225],
@@ -129,7 +129,7 @@ CLASSES = ['flower']
 ACTIVATION = 'sigmoid'
 DEVICE = 'cuda'
 
-model = smp.Linknet(
+model = smp.DeepLabV3Plus(
     encoder_name=ENCODER,
     encoder_weights=ENCODER_WEIGHTS,
     classes=1,
@@ -146,6 +146,8 @@ train_loader, val_loader = get_loaders(TRAIN_IMG_DIR, TRAIN_MASK_DIR,
 loss = smp.utils.losses.DiceLoss()
 metrics = [
     smp.utils.metrics.IoU(threshold=0.5),
+    smp.utils.metrics.Precision(),
+    smp.utils.metrics.Recall()
 ]
 
 optimizer = torch.optim.Adam([ 
@@ -156,12 +158,12 @@ optimizer = torch.optim.Adam([
 run['parameters/epoch_nr'] = EPOCHS
 run['parameters/batch_size'] = BATCH_SIZE
 run['parameters/optimizer'] = 'Adam'
-run['parameters/metrics'] = ['accuracy', 'dice_score', 'iou_score']
+run['parameters/metrics'] = ['accuracy', 'dice_score', 'iou_score', 'precision', 'recall']
 run['parameters/activation'] = ACTIVATION
 run['parameters/encoder'] = ENCODER
 run['parameters/image_height'] = IMAGE_HEIGHT
 run['parameters/image_width'] = IMAGE_WIDTH
-run['parameters/model'] = 'LinkNet'
+run['parameters/model'] = 'deeplabv3plus-2'
 run['parameters/learning_rate'] = LEARNING_RATE
 
 

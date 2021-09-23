@@ -41,24 +41,24 @@ class DwtPyramidBlock(nn.Module):
             yl, yh = self.dwtf(x.detach())  # get wavelet coefficients
             feat = torch.unbind(yh[0], dim=2)  # unbind scale 1 band
             feat0 = feat[0] # get features (yl, yh -> (lh, hl, hh))
-            feat1 = feat[1]
-            feat2 = feat[2]
-            self.dwtList.append(feat0)  # append to list for later use
-            self.dwtList.append(feat1)
-            self.dwtList.append(feat2)
-            self.dwtList.append(yl)
+            #feat1 = feat[1]
+            #feat2 = feat[2]
+            self.dwtList.append(yl)  # append to list for later use
+            #self.dwtList.append(feat1)
+            #self.dwtList.append(feat2)
+            #self.dwtList.append(yl)
             self.depth += 1
             return self.forward(feat0)  # create next layer of pyramid
         elif self.depth == 2:  # end of pyramid
             yl, yh = self.dwtf(x.detach())  # get final coefficients
             feat = torch.unbind(yh[0], dim=2)
             feat0 = feat[0]
-            feat1 = feat[1]
-            feat2 = feat[2]
-            self.dwtList.append(feat0)  # append to list for later use
-            self.dwtList.append(feat1)
-            self.dwtList.append(feat2)
-            self.dwtList.append(yl)
+            #feat1 = feat[1]
+            #feat2 = feat[2]
+            self.dwtList.append(yl)  # append to list for later use
+            #self.dwtList.append(feat1)
+            #self.dwtList.append(feat2)
+            #self.dwtList.append(yl)
 
             for i in range(len(self.dwtList)):  # pad each element in list for concatenation later
                 p_size = int(self.get_pad_size(self.dwtList[i]))  # gets the variable needed for padding
@@ -79,15 +79,15 @@ class DwtPyramidBlock(nn.Module):
                 self.dwtList[0],
                 self.dwtList[1],
                 self.dwtList[2],
-                self.dwtList[3],
-                self.dwtList[4],
-                self.dwtList[5],
-                self.dwtList[6],
-                self.dwtList[7],
-                self.dwtList[8],
-                self.dwtList[9],
-                self.dwtList[10],
-                self.dwtList[11],
+                #self.dwtList[3],
+                #self.dwtList[4],
+                #self.dwtList[5],
+                #self.dwtList[6],
+                #self.dwtList[7],
+                #self.dwtList[8],
+                #self.dwtList[9],
+                #self.dwtList[10],
+                #self.dwtList[11],
             ), dim=1)
             self.dwtList = []  # IMPORTANT, reset list every time a pyramid is built otherwise the model will run out of memory
             self.depth = 0  # same as above.
@@ -208,7 +208,7 @@ class UNET(nn.Module):
 
         self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave='haar', depth=0, og_size_list=[0, 0, 16, 16])
 
-        self.projection_layer = LinearConv(13312, 1024)
+        self.projection_layer = LinearConv(4096, 1024)
 
         self.pretrained = models.resnext50_32x4d(pretrained=True)
 

@@ -2,6 +2,11 @@
 *.tif
 *.tar
 models/saved_images/*
+drone_images/*
+results/*
+rstudio-code/*
+.neptune/*
+lambda-stack-with-tensorflow-pytorch/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -137,3 +142,4 @@ dmypy.json
 .pyre/
 .DS_Store
 drone_data/*
+.Rproj.user

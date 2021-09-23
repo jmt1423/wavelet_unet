@@ -3,14 +3,14 @@ from itertools import product
 import rasterio as rio
 from rasterio import windows
 
-in_path = '../../../../Downloads/'
-input_filename = 'clipped.tif'
+in_path = '/home/jont/Documents/flower_image_segmentation/drone_images/red_base_images/images/test'
+input_filename = 'test_image.tif'
 
-out_path = '../../../'
+out_path = '/home/jont/Documents/flower_image_segmentation/drone_images/red_val_images/'
 output_filename = 'tile_{}-{}.tif'
 
 
-def get_tiles(ds, width=512, height=512):
+def get_tiles(ds, width=256, height=256):
     nols, nrows = ds.meta['width'], ds.meta['height']
     offsets = product(range(0, nols, width), range(0, nrows, height))
     big_window = windows.Window(col_off=0, row_off=0, width=nols, height=nrows)
@@ -24,7 +24,7 @@ def get_tiles(ds, width=512, height=512):
 
 
 with rio.open(os.path.join(in_path, input_filename)) as inds:
-    tile_width, tile_height = 512, 512
+    #tile_width, tile_height = 512, 512
 
     meta = inds.meta.copy()
 

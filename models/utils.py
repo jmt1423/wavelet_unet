@@ -71,7 +71,6 @@ class Activation(nn.Module):
 
 class IoU(Metric):
     __name__ = 'iou_score'
-
     def __init__(self, eps=1e-7, threshold=0.5, activation=None, ignore_channels=None, **kwargs):
         super().__init__(**kwargs)
         self.eps = eps
@@ -82,6 +81,42 @@ class IoU(Metric):
     def forward(self, y_pr, y_gt):
         y_pr = self.activation(y_pr)
         return F.iou(
+            y_pr, y_gt,
+            eps=self.eps,
+            threshold=self.threshold,
+            ignore_channels=self.ignore_channels,
+        )
+
+class Recall(Metric):
+    __name__ = 'recall_score'
+    def __init__(self, eps=1e-7, threshold=0.5, activation=None, ignore_channels=None, **kwargs):
+        super().__init__(**kwargs)
+        self.eps = eps
+        self.threshold = threshold
+        self.activation = Activation(activation)
+        self.ignore_channels = ignore_channels
+
+    def forward(self, y_pr, y_gt):
+        y_pr = self.activation(y_pr)
+        return F.recall(
+            y_pr, y_gt,
+            eps=self.eps,
+            threshold=self.threshold,
+            ignore_channels=self.ignore_channels,
+        )
+
+class Precision(Metric):
+    __name__ = 'precision_score'
+    def __init__(self, eps=1e-7, threshold=0.5, activation=None, ignore_channels=None, **kwargs):
+        super().__init__(**kwargs)
+        self.eps = eps
+        self.threshold = threshold
+        self.activation = Activation(activation)
+        self.ignore_channels = ignore_channels
+
+    def forward(self, y_pr, y_gt):
+        y_pr = self.activation(y_pr)
+        return F.precision(
             y_pr, y_gt,
             eps=self.eps,
             threshold=self.threshold,
@@ -205,6 +240,8 @@ def check_accuracy(metrics, run, loader, model, device='cpu'):
     run['validation/epoch/accuracy'].log(accuracy)
     run['validation/epoch/dice_score'].log(dice_score)
     run['validation/epoch/iou_score'].log(metrics_logs.get('iou_score'))
+    run['validation/epoch/precision_score'].log(metrics_logs.get('precision'))
+    run['validation/epoch/recall_score'].log(metrics_logs.get('recall'))
 
     model.train()
 

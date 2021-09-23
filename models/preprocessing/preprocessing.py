@@ -76,7 +76,7 @@ def merge_files():
 # Mask all tiled images
 # =============================================================================
 with fiona.open(
-        '../../../Yellow_flower_label/YellowFlowers4.shp'
+        '/home/jont/Documents/flower_image_segmentation/drone_images/red_base_images/shape_files/test.shp'
 ) as shapefile:
     shapes1 = [feature['geometry'] for feature in shapefile]
 
@@ -97,7 +97,7 @@ def create_mask(input_file, output_file, shapes1):
     """
     while True:
         try:
-            with rasterio.open('../../../images/' +
+            with rasterio.open('/home/jont/Documents/flower_image_segmentation/drone_images/red_val_images/' +
                                input_file) as src:
                 out_image, out_transform = rasterio.mask.mask(src,
                                                               shapes1,
@@ -118,7 +118,7 @@ def create_mask(input_file, output_file, shapes1):
 
 
 num = 0
-for item in os.listdir('../../../images/'):
+for item in os.listdir('/home/jont/Documents/flower_image_segmentation/drone_images/red_val_images/'):
     splitname = os.path.splitext(item)[0]
     combined = splitname + '_' + str(num) + '.tif'
     print(item)

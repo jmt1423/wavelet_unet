@@ -44,7 +44,7 @@ NUM_EPOCHS = 200
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 256
-MODEL_NAME = 'full-freq-unet'
+MODEL_NAME = 'dwt_lowpass2_0f'
 PIN_MEMORY = True
 LOAD_MODEL = False  # set to true if you want to load the created checkpoint
 TRAIN_IMG_DIR = "../drone_images/train_images/"
@@ -54,6 +54,8 @@ VAL_MASK_DIR = "../drone_images/val_masks_new/"
 
 metrics = [
     smp.utils.metrics.IoU(threshold=0.5),
+    smp.utils.metrics.Precision(),
+    smp.utils.metrics.Recall()
 ]
 
 # instantiate  neptune logging variables
@@ -113,6 +115,8 @@ def main():
         A.VerticalFlip(p=0.1),
         A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2, always_apply=False, p=0.5),
+        A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
+        A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
         A.Normalize(
             mean=[0.0, 0.0, 0.0],
             std=[1.0, 1.0, 1.0],

@@ -1,6 +1,44 @@
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from itertools import product
+import rasterio as rio
+from rasterio import windows
+
+in_path = '../results/final_vis/pspnet/'
+input_filename = 'pred_0.png'
+
+out_path = '../results/final_vis/pspnet/'
+output_filename = 'mask_tile_{}-{}.png'
+
+def get_tiles(ds, width=512, height=1000):
+
+    nols, nrows = ds.meta['width'], ds.meta['height']
+    offsets = product(range(0, nols, width), range(0, nrows, height))
+    big_window = windows.Window(col_off=0, row_off=0, width=nols, height=nrows)
+    for col_off, row_off in offsets:
+        window = windows.Window(col_off=col_off,
+                                row_off=row_off,
+                                width=width,
+                                height=height).intersection(big_window)
+        transform = windows.transform(window, ds.transform)
+        yield window, transform
+    
+    with rio.open(os.path.join(in_path, input_filename)) as inds:
+        tile_width, tile_height = 256, 256
+
+        meta = inds.meta.copy()
+
+        for window, transform in get_tiles(inds):
+            print(window)
+            meta['transform'] = transform
+            meta['width'], meta['height'] = window.width, window.height
+            outpath = os.path.join(
+                out_path,
+                output_filename.format(int(window.col_off), int(window.row_off)))
+            with rio.open(outpath, 'w', **meta) as outds:
+                outds.write(inds.read(window=window))
 
 def stitch_ground_truth():
 
@@ -31,23 +69,24 @@ def stitch_ground_truth():
 
 def plot_all():
     input = [
-        '../results/ground_truth_images_stitched.png',
-        '../results/Wavelet-Unet/full-frequency/ground_truth_masks/0.png',
-        '../results/Wavelet-Unet/full-frequency/predictions/pred_0.png',
-        '../results/PSPNet/predictions/pred_0.png',
-        '../results/fpn/predictions/pred_0.png',
-        '../results/PAN/predictions/pred_0.png',
-        '../results/LinkNet/predictions/pred_0.png'
+        '../results/final_vis/groundtruth/tile_768-0.png',
+        '../results/final_vis/groundtruth/tile_12800-3072.tif',
+        '../results/final_vis/full-freq/mask_tile_768-0.png',
+        '../results/final_vis/pspnet/mask_tile_1536-0.png',
+        '../results/final_vis/fpn/mask_tile_1536-0.png',
+        '../results/final_vis/PAN/mask_tile_1536-0.png',
+        '../results/final_vis/LinkNet/mask_tile_768-0.png',
+
     ]
     images = [Image.open(x) for x in input]
 
-    col = 1
-    row = 7
+    col = 7
+    row = 1
 
     text = [
-        'Ground Truth Images',
-        'Ground Truth Masks',
-        'Full Frequency Wavelet Pyramid',
+        'GT Image',
+        'GT Mask',
+        'MSWP',
         'PSP-Net',
         'FPN',
         'PAN',
@@ -56,8 +95,8 @@ def plot_all():
 
     fig = plt.figure(figsize=(5,18))
     
-    col=1
-    row=7
+    col=7
+    row=1
 
     plots = []
     i=0
