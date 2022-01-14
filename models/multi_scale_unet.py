@@ -266,22 +266,6 @@ class UNET(nn.Module):
             # to increase spatial information gain wavelet decompositions will be used
             # alongside pooling operations and concatenated with everything at the end
             x = self.pool(x)
-
-            # if temp_var > 0:
-            #     yl, yh = self.dwtF(x1_hh)
-
-            #     #print('--yh before unbind: ', yh[0].shape)
-
-            #     yh = torch.unbind(yh[0], dim=2)
-            #     x1_hh = yh[0]
-            #     wavelet_skips.append(x1_hh)
-                #print('--dwt after unbind: ', yh[0].shape)
-            
-                #print('=============hh: ', x1_hh.shape)
-
-            #print('=============final x: ', x.shape)
-
-            # temp_var += 1
         
         x = self.bottleneck(x)
 
@@ -305,20 +289,9 @@ class UNET(nn.Module):
             if x.shape != skip_connection.shape:
                 x = TF.resize(x, size=skip_connection.shape[2:])
 
-            # if temp2 < 3:  # wavelet skip connection, not done on first iteration as there is one less connection
-            #     wavelet_skip = wavelet_skips[temp2]
-
-            #     if x.shape != wavelet_skip.shape:
-            #         x = TF.resize(x, size=wavelet_skip.shape[2:])
-                
-            #     #print('-=-=-=-=-=-=-=-=', wavelet_skip.shape, x.shape)
-            #     concat_skip = torch.cat((wavelet_skip, x), dim=1)
-
-            #print('--------------', skip_connection.shape, x.shape)
-            #time.sleep(3)
+            
             concat_skip = torch.cat((skip_connection, x), dim=1)
             x = self.ups[idx + 1](concat_skip)
-            # temp2 += 1
         
         x = self.final_conv(x)
         return x

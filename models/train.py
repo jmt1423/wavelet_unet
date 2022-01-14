@@ -39,18 +39,22 @@ Image.MAX_IMAGE_PIXELS = 400000000
 # Hyperparameters
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 5
-NUM_EPOCHS = 200
+BATCH_SIZE = 1
+NUM_EPOCHS = 10
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 256
-MODEL_NAME = 'dwt_lowpass2_0f'
+MODEL_NAME = 'testing'
 PIN_MEMORY = True
 LOAD_MODEL = False  # set to true if you want to load the created checkpoint
-TRAIN_IMG_DIR = "../drone_images/train_images/"
-TRAIN_MASK_DIR = "../drone_images/train_masks_new/"
-VAL_IMG_DIR = "../drone_images/val_images/"
-VAL_MASK_DIR = "../drone_images/val_masks_new/"
+#TRAIN_IMG_DIR = "../drone_images/train_images/"
+#TRAIN_MASK_DIR = "../drone_images/train_masks_new/"
+#VAL_IMG_DIR = "../drone_images/val_images/"
+#VAL_MASK_DIR = "../drone_images/val_masks_new/"
+TRAIN_IMG_DIR = "../../CoastSat/data/blackpool/images/image_tiles/"
+TRAIN_MASK_DIR = "../../CoastSat/data/blackpool/images/mask_tiles/"
+VAL_IMG_DIR = "../../CoastSat/data/blackpool/images/validation_images/"
+VAL_MASK_DIR = "../../CoastSat/data/blackpool/images/validation_masks/"
 
 metrics = [
     smp.utils.metrics.IoU(threshold=0.5),
@@ -84,7 +88,9 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
 
     for batch_idx, (data, targets) in enumerate(loop):
         data = data.to(device=DEVICE)
-        targets = targets.float().unsqueeze(1).to(device=DEVICE)
+        targets = targets.to(device=DEVICE)
+        targets = targets.long()
+        targets = targets.squeeze(1)
 
         # forward
         with torch.cuda.amp.autocast():
@@ -137,9 +143,9 @@ def main():
 
     # to change to multiclass -> out_channels=num_of_classes
     # and change LogitsLoss to cross entropy loss
-    model = UNET(in_channels=3, out_channels=1).to(DEVICE)
+    model = UNETablation(in_channels=3, out_channels=4).to(DEVICE)
 
-    loss_fn = SoftDiceLoss()
+    loss_fn = nn.CrossEntropyLoss()
 
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 

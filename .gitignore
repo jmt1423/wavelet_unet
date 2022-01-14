@@ -6,6 +6,7 @@ drone_images/*
 results/*
 rstudio-code/*
 .neptune/*
+models/.neptune/async/*
 lambda-stack-with-tensorflow-pytorch/*
 
 # Byte-compiled / optimized / DLL files

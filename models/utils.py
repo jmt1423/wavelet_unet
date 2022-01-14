@@ -237,11 +237,11 @@ def check_accuracy(metrics, run, loader, model, device='cpu'):
 
     dice_score = dice_score/len(loader)
 
-    run['validation/epoch/accuracy'].log(accuracy)
-    run['validation/epoch/dice_score'].log(dice_score)
-    run['validation/epoch/iou_score'].log(metrics_logs.get('iou_score'))
-    run['validation/epoch/precision_score'].log(metrics_logs.get('precision'))
-    run['validation/epoch/recall_score'].log(metrics_logs.get('recall'))
+    #run['validation/epoch/accuracy'].log(accuracy)
+    #run['validation/epoch/dice_score'].log(dice_score)
+    #run['validation/epoch/iou_score'].log(metrics_logs.get('iou_score'))
+    #run['validation/epoch/precision_score'].log(metrics_logs.get('precision'))
+    #run['validation/epoch/recall_score'].log(metrics_logs.get('recall'))
 
     model.train()
 
