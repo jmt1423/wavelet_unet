@@ -50,7 +50,7 @@ final = Image.fromarray(image_np.astype(np.uint8))
 #final.show()
 
 
-
+# using kdtree to reduce color space of mask image to create correct color mapping for model
 
 REDUCED_COLOR_SPACE = True
 
