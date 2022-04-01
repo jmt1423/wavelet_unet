@@ -6,6 +6,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import re
 import functional as F
+import time
 from meter import AverageValueMeter
 
 DEVICE = 'cuda'
@@ -195,48 +196,38 @@ def get_loaders(
 
     return train_loader, val_loader
 
-def check_accuracy(metrics, run, loader, model, device='cpu'):
+# TODO 
+def check_accuracy(metrics, loader, model, device='cpu'):
     """TODO: Docstring for check_accuracy.
-
     :loader: TODO
     :model: TODO
     :device: TODO
     :returns: TODO
-
     """
     num_correct = 0
     num_pixels = 0
     dice_score = 0
-
     model.eval()
-
     metrics_meters = {metric.__name__: AverageValueMeter() for metric in metrics}
-
     with torch.no_grad():
         for x, y in loader:
             x = x.to(device)
             y = y.to(device).unsqueeze(1)
-
             preds = torch.sigmoid(model(x))
-            preds = (preds > 0.5).float()
-
-            num_correct += (preds == y).sum()
-            num_pixels += torch.numel(preds)
-            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
+            #preds = (preds > 0.5).float()
+            #num_correct += (preds == y).sum()
+            #num_pixels += torch.numel(preds)
+            #dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
             for metric_fn in metrics:
                     metric_value = metric_fn(preds, y).cpu().detach().numpy()
                     metrics_meters[metric_fn.__name__].add(metric_value)
             metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-
-    accuracy = num_correct/num_pixels*100
-    print(
-       f"Got {num_correct}/{num_pixels} with accuracy {accuracy:.2f}"
-    )
-
+    #accuracy = num_correct/num_pixels*100
+    #print(
+    #   f"Got {num_correct}/{num_pixels} with accuracy {accuracy:.2f}"
+    #)
     print(metrics_logs)
-
-    dice_score = dice_score/len(loader)
-
+    #dice_score = dice_score/len(loader)
     #run['validation/epoch/accuracy'].log(accuracy)
     #run['validation/epoch/dice_score'].log(dice_score)
     #run['validation/epoch/iou_score'].log(metrics_logs.get('iou_score'))
@@ -264,8 +255,8 @@ def save_predictions_as_imgs(loader,
     for idx, (x, y) in enumerate(loader):
         x = x.to(device=device)
         with torch.no_grad():
-            preds = torch.sigmoid(model(x))
-            preds = (preds > 0.5).float()
+            preds = torch.softmax(model(x))
+            #preds = (preds > 0.5).float()
         torchvision.utils.save_image(preds, f"{folder}/pred_{idx}.png")
         torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
 

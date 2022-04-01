@@ -143,7 +143,7 @@ def main():
 
     # to change to multiclass -> out_channels=num_of_classes
     # and change LogitsLoss to cross entropy loss
-    model = UNETablation(in_channels=3, out_channels=4).to(DEVICE)
+    model = UNETablation(in_channels=3, out_channels=5).to(DEVICE)
 
     loss_fn = nn.CrossEntropyLoss()
 
@@ -166,11 +166,11 @@ def main():
         check_accuracy(metrics, run, val_loader, model, device=DEVICE)
 
         # print results to folder
-        save_predictions_as_imgs(
-            val_loader,
-            model,
-            folder="./saved_images/",
-            device=DEVICE)
+        #save_predictions_as_imgs(
+        #    val_loader,
+        #    model,
+        #    folder="./saved_images/",
+        #    device=DEVICE)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,16 @@
 # image files, they can be generated on a local machine as transferring between git would take a long time
 *.tif
 *.tar
+*.png
+*.jpeg
+*.jpg
+*.pth
 models/saved_images/*
 drone_images/*
 results/*
 rstudio-code/*
 .neptune/*
+models/preprocessing/.neptune/
 models/.neptune/async/*
 lambda-stack-with-tensorflow-pytorch/*
 config.py

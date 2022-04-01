@@ -4,7 +4,7 @@ import os
 import numpy as np
 import cv2
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset as BaseDataset
@@ -24,14 +24,14 @@ from sklearn.metrics import f1_score
 import neptune.new as neptune
 from neptune.new.types import File
 
-NEPTUNE_PROJECT = os.getenv('NEPTUNE_PROJECT')
-API_TOKEN = os.getenv('NEPTUNE_API_TOKEN')
+#NEPTUNE_PROJECT = os.getenv('NEPTUNE_PROJECT')
+#API_TOKEN = os.getenv('NEPTUNE_API_TOKEN')
 
-run = neptune.init(
-    project=NEPTUNE_PROJECT,
-    api_token=API_TOKEN,
-    source_files=['*.py']
-)
+#run = neptune.init(
+#    project=NEPTUNE_PROJECT,
+#    api_token=API_TOKEN,
+#    source_files=['*.py']
+#)
 
 # training loop method
 # TODO: can this be used with the original unet to? so i dont have to repeat it?
@@ -50,7 +50,7 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
 
     for batch_idx, (data, targets) in enumerate(loop):
         data = data.to(device='cuda')
-        targets = targets.float().unsqueeze(1).to(device=DEVICE)
+        targets = targets.unsqueeze(1).to(device=DEVICE)
 
         # forward
         with torch.cuda.amp.autocast():
@@ -63,20 +63,23 @@ def train_fn(loader, model, optimizer, loss_fn, scaler):
         scaler.step(optimizer)
         scaler.update()
         # loss_values.append(loss.item())
-        run['training/batch/loss'].log(loss)
+        #run['training/batch/loss'].log(loss)
 
         #update loop
         loop.set_postfix(loss=loss.item())
 
-TRAIN_IMG_DIR = "../drone_images/train_images/"
-TRAIN_MASK_DIR = "../drone_images/train_masks_new/"
-VAL_IMG_DIR = "../drone_images/val_images/"
-VAL_MASK_DIR = "../drone_images/val_masks_new/"
-IMAGE_HEIGHT = 512
+#TRAIN_IMG_DIR = "../drone_images/train_images/"
+#TRAIN_MASK_DIR = "../drone_images/train_masks_new/"
+#VAL_IMG_DIR = "../drone_images/val_images/"
+#VAL_MASK_DIR = "../drone_images/val_masks_new/"
+TRAIN_IMG_DIR = "../../CoastSat/data/blackpool/images/train/"
+TRAIN_MASK_DIR = "../../CoastSat/data/blackpool/images/trainannot/"
+VAL_IMG_DIR = "../../CoastSat/data/blackpool/images/val/"
+VAL_MASK_DIR = "../../CoastSat/data/blackpool/images/valannot/"
+IMAGE_HEIGHT = 32
 IMAGE_WIDTH = 512
 BATCH_SIZE = 5
-LEARNING_RATE = 1e-2
-EPOCHS = 200
+EPOCHS = 100
 
 train_transform = A.Compose([
     A.Resize(height=IMAGE_HEIGHT, width=IMAGE_WIDTH),
@@ -88,8 +91,7 @@ train_transform = A.Compose([
     A.RGBShift(r_shift_limit=15, g_shift_limit=15, b_shift_limit=15, p=0.5),
     A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
     A.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225],
+        mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0
     ),
     ToTensorV2(),
 ], )
@@ -97,9 +99,8 @@ train_transform = A.Compose([
 val_transforms = A.Compose([
         A.Resize(IMAGE_HEIGHT, IMAGE_WIDTH),
         A.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
+        mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), max_pixel_value=255.0
+    ),
         ToTensorV2(),
     ], )
 
@@ -125,14 +126,15 @@ visualize(
 
 ENCODER = 'se_resnext50_32x4d'
 ENCODER_WEIGHTS = 'imagenet'
-CLASSES = ['flower']
-ACTIVATION = 'sigmoid'
+CLASSES = ['vegetation', 'ocean', 'wetsand', 'drysand', 'buildings']
+ACTIVATION = 'softmax2d'
 DEVICE = 'cuda'
 
-model = smp.DeepLabV3Plus(
-    encoder_name=ENCODER,
-    encoder_weights=ENCODER_WEIGHTS,
-    classes=1,
+model = smp.Unet(
+    #encoder_name=ENCODER,
+    #encoder_weights=ENCODER_WEIGHTS,
+    in_channels=3,
+    classes=5,
     activation=ACTIVATION,
 )
 
@@ -145,33 +147,33 @@ train_loader, val_loader = get_loaders(TRAIN_IMG_DIR, TRAIN_MASK_DIR,
 
 loss = smp.utils.losses.DiceLoss()
 metrics = [
-    smp.utils.metrics.IoU(threshold=0.5),
+    smp.utils.metrics.IoU(),
     smp.utils.metrics.Precision(),
-    smp.utils.metrics.Recall()
+    #smp.utils.metrics.Recall(eps=1.)
+    smp.utils.metrics.Accuracy()
 ]
 
 optimizer = torch.optim.Adam([ 
-    dict(params=model.parameters(), lr=0.0001),
+    dict(params=model.parameters(), lr=0.1),
 ])
 
 # log parameters to neptune
-run['parameters/epoch_nr'] = EPOCHS
-run['parameters/batch_size'] = BATCH_SIZE
-run['parameters/optimizer'] = 'Adam'
-run['parameters/metrics'] = ['accuracy', 'dice_score', 'iou_score', 'precision', 'recall']
-run['parameters/activation'] = ACTIVATION
-run['parameters/encoder'] = ENCODER
-run['parameters/image_height'] = IMAGE_HEIGHT
-run['parameters/image_width'] = IMAGE_WIDTH
-run['parameters/model'] = 'deeplabv3plus-2'
-run['parameters/learning_rate'] = LEARNING_RATE
+#run['parameters/epoch_nr'] = EPOCHS
+#run['parameters/batch_size'] = BATCH_SIZE
+#run['parameters/optimizer'] = 'Adam'
+#run['parameters/metrics'] = ['accuracy', 'dice_score', 'iou_score', 'precision', 'recall']
+#run['parameters/activation'] = ACTIVATION
+#run['parameters/encoder'] = ENCODER
+#run['parameters/image_height'] = IMAGE_HEIGHT
+#run['parameters/image_width'] = IMAGE_WIDTH
+#run['parameters/model'] = 'deeplabv3plus-2'
+#run['parameters/learning_rate'] = LEARNING_RATE
 
 
 score = 0
 scaler = torch.cuda.amp.GradScaler()
 
 # IMPORTANT: Do not remove
-# while they arent exactly used anywhere, they do put the encoder
 # weights onto the cuda ready devices
 train_epoch = smp.utils.train.TrainEpoch(
     model, 
@@ -193,10 +195,10 @@ valid_epoch = smp.utils.train.ValidEpoch(
 # custom training loop so i am able to manipulate tensors in the models
 for epoch in range(EPOCHS):
     train_fn(train_loader, model, optimizer, loss, scaler)
-    check_accuracy(metrics, run, val_loader, model, DEVICE)
-    save_predictions_as_imgs(
-        val_loader,
-        model,
-        folder='./saved_images/',
-        device=DEVICE,
-    )
+    check_accuracy(metrics, val_loader, model, DEVICE)
+    #save_predictions_as_imgs(
+    #    val_loader,
+    #    model,
+    #    folder='./saved_images/',
+    #    device=DEVICE,
+    #)
