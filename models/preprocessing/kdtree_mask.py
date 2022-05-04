@@ -5,7 +5,6 @@ and uses a KDTree algorithm from scipy to threshold each pixel into a given colo
 from PIL import Image
 import torch
 import time
-import config
 
 import numpy as np
 import matplotlib
@@ -27,31 +26,7 @@ from scipy.spatial import cKDTree as KDTree
 from scipy.misc import face
 
 
-
-# Project ID of blackpool labels
-PROJECT_ID = config.PROJECT_ID
-# endpoint of labelbox api
-ENDPOINT = "https://api.labelbox.com/graphql"
-
-# client key this needs to be removed and 
-client = Client(api_key=config.LB_API_KEY, endpoint=ENDPOINT)
-project = client.get_project('ckybon3yzbrb30zai53rbfhic')
-
-labels = project.label_generator()
-
-# Create a mapping for the colors
-hex_to_rgb = lambda hex_color: tuple(int(hex_color[i+1:i+3], 16) for i in (0, 2, 4))
-colors1 = {tool.name: hex_to_rgb(tool.color) for tool in OntologyBuilder.from_project(project).tools}
-
-# Grab the first label and corresponding image
-label = next(labels)
-image_np = label.data.value
-
-# Draw the annotations onto the source image
-for annotation in label.annotations:
-    if isinstance(annotation.value, Geometry):
-        image_np = annotation.value.draw(canvas = image_np, color = colors1[annotation.name], thickness = 5)
-final = Image.fromarray(image_np.astype(np.uint8))
+final = Image.open('./bp_validation_large_again.jpg')
 
 
 # using kdtree to reduce color space of mask image to create correct color mapping for model
@@ -59,7 +34,7 @@ REDUCED_COLOR_SPACE = True
 
 # borrow a list of named colors from matplotlib
 if REDUCED_COLOR_SPACE:
-    use_colors = {k: colors.cnames[k] for k in ['red', 'blue', 'yellow', 'pink', 'purple', 'green']}
+    use_colors = {k: colors.cnames[k] for k in ['red', 'blue', 'yellow', 'white', 'purple', 'green']}
 else:
     use_colors = colors.cnames
 

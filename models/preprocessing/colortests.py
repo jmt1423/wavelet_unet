@@ -10,9 +10,9 @@ import cv2
 import torch
 
 # Create dummy target image
-mask = Image.open('../../../testing.png').convert('RGB')
-target2 = Image.open('./final_image.jpg')
-target2.show()
+mask = Image.open('../../bp_validation_large.jpg').convert('RGB')
+#target2 = Image.open('./final_image.jpg')
+#target2.show()
 
 #print(target)
 
@@ -26,6 +26,6 @@ for i in range(mask.size[0]):
             elif pixels[i,j] == (255, 225, 241):
                 pixels [i,j] = (255,225,225)
             else: pixels[i,j] = pixels[i,j]
-mask.save('example.png')
+mask.save('example_val_bp_large.png')
 
 time.sleep(1000)

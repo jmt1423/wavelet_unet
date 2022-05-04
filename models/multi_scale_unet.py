@@ -301,8 +301,8 @@ def testArch():
     """testing the unet architecture
     :returns: TODO
     """
-    x = torch.randn((3, 1, 160, 160))
-    model = UNET(in_channels=1, out_channels=1)
+    x = torch.randn((3, 3, 256, 256))
+    model = UNET(in_channels=3, out_channels=6)
     preds = model(x)
     print(preds.shape)
     print(x.shape)

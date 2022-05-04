@@ -7,10 +7,10 @@ import time
 from PIL import Image
 
 
-mask = Image.open('./example_good.png').convert('RGB')
+mask = Image.open('../../bp_validation_large.jpg').convert('RGB')
 
-h=2993
-w=722
+h=1467
+w=316
 #img.show()
 
 target = torch.from_numpy(np.array(mask))
