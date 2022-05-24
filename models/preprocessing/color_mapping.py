@@ -7,9 +7,9 @@ import time
 from PIL import Image
 
 
-mask = Image.open('../../bp_validation_large.jpg').convert('RGB')
+mask = Image.open('/home/jont/Documents/CoastSat/data/blackpool/images/valannot2/tile_0-0.png').convert('RGB')
 
-h=1467
+h=316
 w=316
 #img.show()
 

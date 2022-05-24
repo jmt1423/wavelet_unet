@@ -23,7 +23,7 @@ main_colors = [(0, 0, 255),
 # you can use `cv2.imread` for that purpose, not the BGR color space
 # for example
 avg = cv2.imread('./bp_validation_large_again.jpg')
-avg = cv2.cvtColor(avg, cv2.BGR2RGB) # convert to RGB
+#avg = cv2.cvtColor(avg, cv2.BGR2RGB) # convert to RGB
 
 # convert main_colors to np array for indexing
 main_colors = np.array(main_colors)

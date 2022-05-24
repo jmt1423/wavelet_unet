@@ -5,14 +5,14 @@ from rasterio import windows
 import time
 from PIL import Image
 
-in_path = '/home/jont/Documents/flower_image_segmentation/models/preprocessing/'
-input_filename = 'example_good.png'
+in_path = '/home/jont/Documents/training3/'
+input_filename = 'training_bp2.jpg'
 
-out_path = '/home/jont/Documents/CoastSat/data/blackpool/images/splitannot/'
-output_filename = 'tile_{}-{}.png'
+out_path = '/home/jont/Documents/training3/gt/'
+output_filename = 'tileS3_{}-{}.png'
 
 
-def get_tiles(ds, width=722, height=20):
+def get_tiles(ds, width=856, height=20):
     nols, nrows = ds.meta['width'], ds.meta['height']
     offsets = product(range(0, nols, width), range(0, nrows, height))
     big_window = windows.Window(col_off=0, row_off=0, width=nols, height=nrows)
