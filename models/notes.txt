@@ -1,0 +1,1 @@
+/home/hpc/27/thomann/.cache/torch/hub/checkpoints/se_resnext50_32x4d-a260b3a4.pth

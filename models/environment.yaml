@@ -1,0 +1,7 @@
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - pytorch=1.11.0
