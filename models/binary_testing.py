@@ -25,157 +25,19 @@ from multi_scale_unet import UNET
 torch.autograd.set_detect_anomaly(False)
 torch.autograd.profiler.profile(False)
 
-def main():
-    parser = argparse.ArgumentParser()
 
-    parser.add_argument('--batchsize', type=int, required=True)
-    parser.add_argument('--lr', type=float, required=True)
-    parser.add_argument('--epochs', type=int, required=True)
-    parser.add_argument('--activation', type=str, required=True)
-    parser.add_argument('--encoder', type=str, required=True)
-    parser.add_argument('--encoderweights', type=str, required=True)
-    parser.add_argument('--beta1', type=float, required=True)
-    parser.add_argument('--beta2', type=float, required=True)
-    parser.add_argument('--epsilon', type=float, required=True)
-    parser.add_argument('--minheight', type=int, required=True)
-    parser.add_argument('--minwidth', type=int, required=True)
-    parser.add_argument('--gamma', type=float, required=True)
-    parser.add_argument('--stepsize', type=int, required=True)
-    parser.add_argument('--trainimgdir', type=str, required=True)
-    parser.add_argument('--trainmaskdir', type=str, required=True)
-    parser.add_argument('--testimgdir', type=str, required=True)
-    parser.add_argument('--testmaskdir', type=str, required=True)
-    parser.add_argument('--numworkers', type=int, required=True)
-    parser.add_argument('--experiment', type=str, required=True)
-    parser.add_argument('--model', type=str, required=True)
+class LastLoss:
+    def __init__(self, ll = 0):
+         self._ll = ll
+      
+    # getter method
+    def get_ll(self):
+        return self._ll
+      
+    # setter method
+    def set_ll(self, x):
+        self._ll = x
 
-    args = parser.parse_args()
-
-    avail = torch.cuda.is_available() # just checking which devices are available for training
-    devCnt = torch.cuda.device_count()
-    devName = torch.cuda.get_device_name(0)
-    print("Available: " + str(avail) + ", Count: " + str(devCnt) + ", Name: " + str(devName))
-    
-    run = neptune.init(
-        project="jmt1423/coastal-segmentation",
-        source_files=['./*.ipynb', './*.py'],
-        api_token=config.NEPTUNE_API_TOKEN,
-    )
-    print('neptuneberunning')
-
-    loss = smp.losses.DiceLoss(mode='binary')
-    LOSS_STR = 'Dice Loss'
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    OPTIM_NAME = 'AdamW'
-
-    TRAIN_IMG_DIR = args.trainimgdir
-    TRAIN_MASK_DIR = args.trainmaskdir
-    TEST_IMG_DIR = args.testimgdir
-    TEST_MASK_DIR = args.testmaskdir
-    IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/images/'
-    MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/model/'
-
-
-    # log parameters to neptune
-    run['parameters/model/model_name'].log(args.model)
-    run['parameters/model/encoder'].log(args.encoder)
-    run['parameters/model/encoder_weights'].log(args.encoderweights)
-    run['parameters/model/activation'].log(args.activation)
-    run['parameters/model/batch_size'].log(args.batchsize)
-    run['parameters/model/learning_rate'].log(args.lr)
-    run['parameters/model/loss'].log(LOSS_STR)
-    run['parameters/model/device'].log(DEVICE)
-    run['parameters/model/imgheight'].log(args.minheight)
-    run['parameters/model/imgwidth'].log(args.minwidth)
-    run['parameters/model/numworkers'].log(args.numworkers)
-    run['parameters/optimizer/optimizer_name'].log(OPTIM_NAME)
-    run['parameters/optimizer/beta1'].log(args.beta1)
-    run['parameters/optimizer/beta2'].log(args.beta2)
-    run['parameters/optimizer/epsilon'].log(args.epsilon)
-
-    train_transform = A.Compose([
-        A.Resize(height=args.minheight, width=args.minwidth),
-        A.Rotate(limit=35, p=1.0),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.1),
-        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2,
-                        rotate_limit=30, p=0.5),
-        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
-                    hue=0.2, always_apply=False, p=0.5),
-        A.Downscale(scale_min=0.25, scale_max=0.25,
-                    interpolation=0, always_apply=False, p=0.5),
-        A.Emboss(alpha=(0.2, 0.5), strength=(0.2, 0.7), always_apply=False, p=0.5),
-        A.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225],
-        ),
-        ToTensorV2(),
-        ], )
-
-    test_transform = A.Compose([
-        A.Resize(args.minheight, args.minwidth),
-        ToTensorV2(),
-    ], )
-
-        # get the dataloaders
-    trainDL, testDL = get_loaders(TRAIN_IMG_DIR, TRAIN_MASK_DIR,
-                                TEST_IMG_DIR, TEST_MASK_DIR,
-                                args.batchsize, train_transform,
-                                test_transform, num_workers=args.numworkers, pin_memory=True)
-    
-        # initialize model
-    model = smp.Unet(
-        encoder_name=args.encoder,
-        encoder_weights=args.encoderweights,
-        in_channels=3,
-        classes=1,
-        activation=args.activation,
-    )
-    model = model.to(DEVICE)
-    model = nn.DataParallel(model)
-    # wavelet_model = UNET(in_channels=3, out_channels=6).to(DEVICE)
-
-    # metrics have been defined in the custom training loop as giving them in a list object did not work for me
-
-
-    # define optimizer and learning rate
-    optimizer = optim.AdamW(params=model.parameters(),
-                            lr=args.lr, betas=(args.beta1, args.beta2), eps=args.epsilon)
-
-    metrics = [
-        smp.utils.metrics.IoU(threshold=0.5),
-        smp.utils.metrics.Precision(threshold=0.5),
-        smp.utils.metrics.Recall(threshold=0.5),
-        smp.utils.metrics.Fscore(threshold=0.5),
-    ]
-
-    scaler = torch.cuda.amp.GradScaler()
-
-    scheduler = StepLR(optimizer=optimizer,
-                    step_size=args.stepsize, gamma=args.gamma)
-
-    print(args.epochs)
-    for epoch in range(args.epochs):  # run training and accuracy functions and save model
-        run['parameters/epochs'].log(epoch)
-        train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run)
-        #train_wavelet(trainDL, wavelet_model, optimizer, loss, scaler)
-        check_accuracy(metrics, testDL, model, run, DEVICE)
-        scheduler.step()
-
-    save_predictions_as_imgs(
-            testDL,
-            model,
-            folder=IMG_SAVE_DIR,
-            device=DEVICE,
-        )
-        
-    binary_result_paths = get_files(IMG_SAVE_DIR)
-    print('done training and saving')
-    torch.save(model, '{}binary_{}.pth'.format(MODEL_SAVE_DIR, args.model))
-
-    for image_path in binary_result_paths:
-                run["train/results"].log(File(image_path))
 
 class Dataset(Dataset):
     """This method creates the dataset from given directories"""
@@ -213,6 +75,7 @@ class Dataset(Dataset):
             mask = augmentations["mask"]
 
         return image, mask
+
 
 def get_loaders(
     train_dir,
@@ -323,7 +186,7 @@ def save_predictions_as_imgs(loader,
 
     model.train()
 
-def train_fn(loader, model, optimizer, loss_fn, scaler, device, run):
+def train_fn(loader, model, optimizer, loss_fn, scaler, device, run, ll):
     """TODO: Docstring for train_fn.
     :loader: TODO
     :model: TODO
@@ -350,10 +213,13 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, run):
         scaler.step(optimizer)
         scaler.update()
 
-        #run['metrics/train/loss'].log(loss.item())
-        # update loop
-        loop.set_postfix(loss=loss.item())
+        run['metrics/train/loss'].log(loss.item())
+        ll.set_ll(loss.item())
 
+        # update loop
+    
+        loop.set_postfix(loss=loss.item())
+    
 def get_files(img_dir):
     path_list = []
     for filename in os.listdir(img_dir):
@@ -362,7 +228,195 @@ def get_files(img_dir):
             path_list.append(f)
     
     return path_list
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--batchsize', type=int, required=True)
+    parser.add_argument('--valbatchsize', type=int, required=True)
+    parser.add_argument('--lr', type=float, required=True)
+    parser.add_argument('--epochs', type=int, required=True)
+    parser.add_argument('--activation', type=str, required=True)
+    parser.add_argument('--encoder', type=str, required=True)
+    parser.add_argument('--encoderweights', type=str, required=True)
+    parser.add_argument('--beta1', type=float, required=True)
+    parser.add_argument('--beta2', type=float, required=True)
+    parser.add_argument('--epsilon', type=float, required=True)
+    parser.add_argument('--minheight', type=int, required=True)
+    parser.add_argument('--minwidth', type=int, required=True)
+    parser.add_argument('--gamma', type=float, required=True)
+    parser.add_argument('--stepsize', type=int, required=True)
+    parser.add_argument('--trainimgdir', type=str, required=True)
+    parser.add_argument('--trainmaskdir', type=str, required=True)
+    parser.add_argument('--testimgdir', type=str, required=True)
+    parser.add_argument('--testmaskdir', type=str, required=True)
+    parser.add_argument('--valimgdir', type=str, required=True)
+    parser.add_argument('--valmaskdir', type=str, required=True)
+    parser.add_argument('--numworkers', type=int, required=True)
+    parser.add_argument('--experiment', type=str, required=True)
+    parser.add_argument('--model', type=str, required=True)
+
+    args = parser.parse_args()
+
+    avail = torch.cuda.is_available() # just checking which devices are available for training
+    devCnt = torch.cuda.device_count()
+    devName = torch.cuda.get_device_name(0)
+    print("Available: " + str(avail) + ", Count: " + str(devCnt) + ", Name: " + str(devName))
+    
+    run = neptune.init(
+        project="jmt1423/coastal-segmentation",
+        source_files=['./*.ipynb', './*.py'],
+        api_token=config.NEPTUNE_API_TOKEN,
+    )
+    print('neptuneberunning')
+
+    loss = smp.losses.DiceLoss(mode='binary')
+    LOSS_STR = 'Dice Loss'
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    last_loss = LastLoss()
+
+    OPTIM_NAME = 'AdamW'
+
+    TRAIN_IMG_DIR = args.trainimgdir
+    TRAIN_MASK_DIR = args.trainmaskdir
+    TEST_IMG_DIR = args.testimgdir
+    TEST_MASK_DIR = args.testmaskdir
+    VAL_IMG_DIR = args.valimgdir
+    VAL_MASK_DIR = args.valmaskdir
+    IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/images/'
+    VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/val_images/'
+    MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/model/'
+
+
+    # log parameters to neptune
+    run['parameters/model/model_name'].log(args.model)
+    run['parameters/model/encoder'].log(args.encoder)
+    run['parameters/model/encoder_weights'].log(args.encoderweights)
+    run['parameters/model/activation'].log(args.activation)
+    run['parameters/model/batch_size'].log(args.batchsize)
+    run['parameters/model/learning_rate'].log(args.lr)
+    run['parameters/model/loss'].log(LOSS_STR)
+    run['parameters/model/device'].log(DEVICE)
+    run['parameters/model/imgheight'].log(args.minheight)
+    run['parameters/model/imgwidth'].log(args.minwidth)
+    run['parameters/model/numworkers'].log(args.numworkers)
+    run['parameters/optimizer/optimizer_name'].log(OPTIM_NAME)
+    run['parameters/optimizer/beta1'].log(args.beta1)
+    run['parameters/optimizer/beta2'].log(args.beta2)
+    run['parameters/optimizer/epsilon'].log(args.epsilon)
+    run['parameters/optimizer/stepsize'].log(args.stepsize)
+    run['parameters/optimizer/gamma'].log(args.gamma)
+
+    train_transform = A.Compose([
+        A.Resize(height=args.minheight, width=args.minwidth),
+        A.Rotate(limit=35, p=1.0),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.1),
+        A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2,
+                        rotate_limit=30, p=0.5),
+        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
+                    hue=0.2, always_apply=False, p=0.5),
+        A.Downscale(scale_min=0.25, scale_max=0.25,
+                    interpolation=0, always_apply=False, p=0.5),
+        A.Emboss(alpha=(0.2, 0.5), strength=(0.2, 0.7), always_apply=False, p=0.5),
+        A.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+        ToTensorV2(),
+        ], )
+
+    test_transform = A.Compose([
+        A.Resize(args.minheight, args.minwidth),
+        ToTensorV2(),
+    ], )
+
+    val_transform = A.Compose(  # validation image transforms
+        [A.Resize(1024, 256),ToTensorV2()]
+    )
+
+        # get the dataloaders
+    trainDL, testDL = get_loaders(TRAIN_IMG_DIR, TRAIN_MASK_DIR,
+                                TEST_IMG_DIR, TEST_MASK_DIR,
+                                args.batchsize, train_transform,
+                                test_transform, num_workers=args.numworkers, pin_memory=True)
+    
+    valDL, valDL2 = get_loaders(VAL_IMG_DIR, VAL_MASK_DIR,
+                                VAL_IMG_DIR, VAL_MASK_DIR,
+                                args.valbatchsize, val_transform,
+                                val_transform, num_workers=args.numworkers, pin_memory=True)
+
+        # initialize model
+    model = smp.Unet(
+        encoder_name=args.encoder,
+        encoder_weights=args.encoderweights,
+        in_channels=3,
+        classes=1,
+        activation=args.activation,
+    )
+    model = model.to(DEVICE)
+    model = nn.DataParallel(model)
+    # wavelet_model = UNET(in_channels=3, out_channels=6).to(DEVICE)
+
+    # metrics have been defined in the custom training loop as giving them in a list object did not work for me
+
+
+    # define optimizer and learning rate
+    optimizer = optim.AdamW(params=model.parameters(),
+                            lr=args.lr, betas=(args.beta1, args.beta2), eps=args.epsilon)
+
+    metrics = [
+        smp.utils.metrics.IoU(threshold=0.5),
+        smp.utils.metrics.Precision(threshold=0.5),
+        smp.utils.metrics.Recall(threshold=0.5),
+        smp.utils.metrics.Fscore(threshold=0.5),
+    ]
+
+    scaler = torch.cuda.amp.GradScaler()
+
+    scheduler = StepLR(optimizer=optimizer,
+                    step_size=args.stepsize, gamma=args.gamma)
+
+    print(args.epochs)
+    for epoch in range(args.epochs):  # run training and accuracy functions and save model
+        run['parameters/epochs'].log(epoch)
+        train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+        #train_wavelet(trainDL, wavelet_model, optimizer, loss, scaler)
+        check_accuracy(metrics, testDL, model, run, DEVICE)
+        scheduler.step()
+
+        if epoch % 20 == 0:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': last_loss.get_ll(),
+            }, '{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+
+            run["model_checkpoints/epoch{}".format(epoch)].upload('{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+
+            save_predictions_as_imgs(
+                testDL,
+                model,
+                folder=IMG_SAVE_DIR,
+                device=DEVICE,
+            )
+
+            save_predictions_as_imgs(
+                valDL,
+                model,
+                folder=VAL_IMG_SAVE_DIR,
+                device=DEVICE,
+            )
+        
+            binary_result_paths = get_files(IMG_SAVE_DIR)
+            binary_val_paths = get_files(VAL_IMG_SAVE_DIR)
+
+            for image_path in binary_result_paths:
+                        run["train/results/epoch{}".format(epoch)].log(File(image_path))
             
+            for image_path2 in binary_val_paths:
+                        run["train/validation/epoch{}".format(epoch)].log(File(image_path2))            
 
 if __name__ == '__main__':
     main()
