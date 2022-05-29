@@ -4,7 +4,7 @@
 #$ -l ncpus=5
 #$ -l h_vmem=40G
 #$ -l h_rt=01:00:00
-#$ -N run-coastal-model
+#$ -N binary-model
 
 source /etc/profile
 module add anaconda3/wmlce

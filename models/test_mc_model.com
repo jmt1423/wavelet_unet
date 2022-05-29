@@ -1,10 +1,6 @@
 #$ -S /bin/bash
-#$ -q short
-#$ -l ngpus=1
-#$ -l ncpus=1
-#$ -l h_vmem=10G
-#$ -l h_rt=01:00:00
-#$ -N multi-class-model
+#$ -q test
+#$ -N mc_test
 
 source /etc/profile
 module add anaconda3/wmlce
@@ -39,9 +35,9 @@ MINHEIGHT=256
 MINWIDTH=256
 NUMWORKERS=16
 
-mkdir $global_storage/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT
-mkdir $global_storage/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/model
-mkdir $global_storage/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/images
-mkdir $global_storage/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/val_images
+mkdir /storage/hpc/27/thomann/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT
+mkdir /storage/hpc/27/thomann/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/model
+mkdir /storage/hpc/27/thomann/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/images
+mkdir /storage/hpc/27/thomann/model_results/coastal_segmentation/$MODEL/multiclass/experiments/$EXPERIMENT/val_images
 
 python ./multi_class_testing.py --batchsize $BATCHSIZE --valbatchsize $VAL_BATCHSIZE --lr $LR --epochs $EPOCHS --activation $ACTIVATION --encoder $ENCODER --encoderweights $ENCODERWEIGHTS --beta1 $BETA1 --beta2 $BETA2 --epsilon $EPSILON --minheight $MINHEIGHT --minwidth $MINWIDTH --gamma $GAMMA --stepsize $STEPSIZE --trainimgdir $TRAIN_IMG_DIR --trainmaskdir $TRAIN_MASK_DIR --testimgdir $TEST_IMG_DIR --testmaskdir $TEST_MASK_DIR --valimgdir $VAL_IMG_DIR --valmaskdir $VAL_MASK_DIR --numworkers $NUMWORKERS --experiment $EXPERIMENT --model $MODEL --classes $CLASSES

@@ -365,10 +365,12 @@ def save_predictions_as_imgs(loader,
     # rescaled = (255.0 / fop.max() * (fop - fop.min())).astype(np.uint8)
     # rescaled2 = (255.0 / fop2.max() * (fop2 - fop2.min())).astype(np.uint8)
 
-    matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.png', fop, cmap=cmp)
-    matplotlib.image.imsave(
-        f'{folder}multiclass_{val_or_test}_preds.png', fop2, cmap=cmp)
-    plt.close()
+    #matplotlib.image.imsave(f"{folder}multiclass_{val_or_test}_gt.jpg", fop, cmap=cmp)
+    matplotlib.image.imsave('{folder}multiclass_{val_or_test}_gt.jpg'.format(folder, val_or_test), fop, cmap=cmp)
+    matplotlib.image.imsave('{folder}multiclass_{val_or_test}_preds.jpg'.format(folder, val_or_test), fop2, cmap=cmp)
+
+    #matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, cmap=cmp)
+    #plt.close()
 
     xut = y_pred
     xutrue = y_true
@@ -385,7 +387,7 @@ def save_predictions_as_imgs(loader,
     ax.set_title('{} Confusion Matrix'.format(model_name))
     ax.set_xticklabels(CLASSES, rotation=20)
     ax.set_yticklabels(CLASSES, rotation=20)
-    plt.savefig(f'{folder}multiclass_{val_or_test}_heatmap.png',
+    plt.savefig('{folder}multiclass_{val_or_test}_heatmap.jpg'.format(folder, val_or_test),
                 dpi=100, bbox_inches="tight")
     # plt.show()
 
