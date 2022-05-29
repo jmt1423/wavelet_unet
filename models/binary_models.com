@@ -22,6 +22,8 @@ TEST_MASK_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/bi
 VAL_IMG_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_val/'
 VAL_MASK_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_valannot/'
 
+CLASSES=1
+
 BATCHSIZE=4
 VAL_BATCHSIZE=1
 LR=0.0001
@@ -38,9 +40,9 @@ MINHEIGHT=32
 MINWIDTH=512
 NUMWORKERS=15
 
-mkdir $global_storage/model_results/coastal_segmentation/unet/experiments/$EXPERIMENT
-mkdir $global_storage/model_results/coastal_segmentation/unet/experiments/$EXPERIMENT/model
-mkdir $global_storage/model_results/coastal_segmentation/unet/experiments/$EXPERIMENT/images
-mkdir $global_storage/model_results/coastal_segmentation/unet/experiments/$EXPERIMENT/val_images
+mkdir $global_storage/model_results/coastal_segmentation/$model/binary/experiments/$EXPERIMENT
+mkdir $global_storage/model_results/coastal_segmentation/$model/binary/experiments/$EXPERIMENT/model
+mkdir $global_storage/model_results/coastal_segmentation/$model/binary/experiments/$EXPERIMENT/images
+mkdir $global_storage/model_results/coastal_segmentation/$model/binary/experiments/$EXPERIMENT/val_images
 
-python ./binary_testing.py --batchsize $BATCHSIZE --valbatchsize $VAL_BATCHSIZE --lr $LR --epochs $EPOCHS --activation $ACTIVATION --encoder $ENCODER --encoderweights $ENCODERWEIGHTS --beta1 $BETA1 --beta2 $BETA2 --epsilon $EPSILON --minheight $MINHEIGHT --minwidth $MINWIDTH --gamma $GAMMA --stepsize $STEPSIZE --trainimgdir $TRAIN_IMG_DIR --trainmaskdir $TRAIN_MASK_DIR --testimgdir $TEST_IMG_DIR --testmaskdir $TEST_MASK_DIR --valimgdir $VAL_IMG_DIR --valmaskdir $VAL_MASK_DIR --numworkers $NUMWORKERS --experiment $EXPERIMENT --model $MODEL
+python ./binary_testing.py --batchsize $BATCHSIZE --valbatchsize $VAL_BATCHSIZE --lr $LR --epochs $EPOCHS --activation $ACTIVATION --encoder $ENCODER --encoderweights $ENCODERWEIGHTS --beta1 $BETA1 --beta2 $BETA2 --epsilon $EPSILON --minheight $MINHEIGHT --minwidth $MINWIDTH --gamma $GAMMA --stepsize $STEPSIZE --trainimgdir $TRAIN_IMG_DIR --trainmaskdir $TRAIN_MASK_DIR --testimgdir $TEST_IMG_DIR --testmaskdir $TEST_MASK_DIR --valimgdir $VAL_IMG_DIR --valmaskdir $VAL_MASK_DIR --numworkers $NUMWORKERS --experiment $EXPERIMENT --model $MODEL --classes $CLASSES

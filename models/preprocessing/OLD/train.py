@@ -15,9 +15,9 @@ from PIL import Image
 from tqdm import tqdm
 import segmentation_models_pytorch as smp
 
-from loss_functions import SoftDiceLoss
+from models.other.loss_functions import SoftDiceLoss
 from multi_scale_unet import UNET
-from baseline_unet import UNETablation
+from models.other.baseline_unet import UNETablation
 from utils import (check_accuracy, get_loaders, load_checkpoint,
                    save_predictions_as_imgs)
 import neptune.new as neptune

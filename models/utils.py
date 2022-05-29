@@ -1,13 +1,13 @@
 import torch
 import torchvision
-from dataset import FlowerDataset
+from models.other.dataset import FlowerDataset
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import torch.nn as nn
 import re
-import functional as F
+import models.other.functional as F
 import time
-from meter import AverageValueMeter
+from models.other.meter import AverageValueMeter
 
 DEVICE = 'cuda'
 

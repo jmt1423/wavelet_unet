@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 import config
-from meter import AverageValueMeter
+from models.other.meter import AverageValueMeter
 from multi_scale_unet import UNET
 
 torch.autograd.set_detect_anomaly(False)
@@ -255,20 +255,15 @@ def main():
     parser.add_argument('--numworkers', type=int, required=True)
     parser.add_argument('--experiment', type=str, required=True)
     parser.add_argument('--model', type=str, required=True)
+    parser.add_argument('--classes', type=int, required=True)
 
     args = parser.parse_args()
-
-    avail = torch.cuda.is_available() # just checking which devices are available for training
-    devCnt = torch.cuda.device_count()
-    devName = torch.cuda.get_device_name(0)
-    print("Available: " + str(avail) + ", Count: " + str(devCnt) + ", Name: " + str(devName))
     
     run = neptune.init(
         project="jmt1423/coastal-segmentation",
         source_files=['./*.ipynb', './*.py'],
         api_token=config.NEPTUNE_API_TOKEN,
     )
-    print('neptuneberunning')
 
     loss = smp.losses.DiceLoss(mode='binary')
     LOSS_STR = 'Dice Loss'
@@ -283,9 +278,9 @@ def main():
     TEST_MASK_DIR = args.testmaskdir
     VAL_IMG_DIR = args.valimgdir
     VAL_MASK_DIR = args.valmaskdir
-    IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/images/'
-    VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/val_images/'
-    MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/experiments/{args.experiment}/model/'
+    IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/images/'
+    VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/val_images/'
+    MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/model/'
 
 
     # log parameters to neptune
@@ -296,6 +291,7 @@ def main():
     run['parameters/model/batch_size'].log(args.batchsize)
     run['parameters/model/learning_rate'].log(args.lr)
     run['parameters/model/loss'].log(LOSS_STR)
+    run['parameters/model/classes'].log(args.classes)
     run['parameters/model/device'].log(DEVICE)
     run['parameters/model/imgheight'].log(args.minheight)
     run['parameters/model/imgwidth'].log(args.minwidth)
@@ -385,7 +381,7 @@ def main():
         check_accuracy(metrics, testDL, model, run, DEVICE)
         scheduler.step()
 
-        if epoch % 20 == 0:
+        if epoch % 10 == 0:
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
