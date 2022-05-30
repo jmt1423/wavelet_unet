@@ -29,7 +29,10 @@ from torch.utils.data import DataLoader
 from matplotlib.colors import ListedColormap
 
 from torchmetrics import ConfusionMatrix
+
 matplotlib.use('Agg')
+#torch.autograd.set_detect_anomaly(False)
+#torch.autograd.profiler.profile(False)
 
 
 class LastLoss:
@@ -292,8 +295,47 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, ll, run):
 
         # update loop
         loop.set_postfix(loss=loss.item())
-        #del loss, predictions
+        del loss, predictions
 
+def train_cpu(loader, model, optimizer, loss_fn, device, run, epoch, iswavelet):
+    """TODO: Docstring for train_fn.
+    :loader: TODO
+    :model: TODO
+    :optimizer: TODO
+    :loss_fn: TODO
+    :scaler: TODO
+    :returns: TODO
+    """
+    loop = tqdm(loader)
+    running_loss = 0.0
+    for batch_idx, (data, targets) in enumerate(loop):
+        data = data.to(device=device).float()
+        targets = targets.to(device=device).float()
+        targets = targets.unsqueeze(1)
+        #data = data.permute(0,3,2,1)  # correct shape for image# ===========================================================================
+        targets = targets.to(torch.int64)
+        
+        if iswavelet == 'no':
+            data = data.permute(0,3,1,2)
+            #print('hereweare')
+
+        optimizer.zero_grad()
+        # forward
+        predictions = model(data)
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
+        if batch_idx % 2000 == 0:    # print every 2000 mini-batches
+            print(f'[{epoch + 1}, {batch_idx + 1:5d}] loss: {running_loss / 2000:.3f}')
+            running_loss = 0.0
+        run['metrics/train/loss'].log(loss.item())
+
+        # update loop
+    
+        loop.set_postfix(loss=loss.item())
+    
 
 def get_files(img_dir):
     path_list = []
@@ -366,8 +408,8 @@ def save_predictions_as_imgs(loader,
     # rescaled2 = (255.0 / fop2.max() * (fop2 - fop2.min())).astype(np.uint8)
 
     #matplotlib.image.imsave(f"{folder}multiclass_{val_or_test}_gt.jpg", fop, cmap=cmp)
-    matplotlib.image.imsave('{folder}multiclass_{val_or_test}_gt.jpg'.format(folder, val_or_test), fop, cmap=cmp)
-    matplotlib.image.imsave('{folder}multiclass_{val_or_test}_preds.jpg'.format(folder, val_or_test), fop2, cmap=cmp)
+    matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.jpg', fop, cmap=cmp)
+    matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, cmap=cmp)
 
     #matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, cmap=cmp)
     #plt.close()
@@ -387,7 +429,7 @@ def save_predictions_as_imgs(loader,
     ax.set_title('{} Confusion Matrix'.format(model_name))
     ax.set_xticklabels(CLASSES, rotation=20)
     ax.set_yticklabels(CLASSES, rotation=20)
-    plt.savefig('{folder}multiclass_{val_or_test}_heatmap.jpg'.format(folder, val_or_test),
+    plt.savefig(f'{folder}multiclass_{val_or_test}_heatmap.jpg',
                 dpi=100, bbox_inches="tight")
     # plt.show()
 
@@ -419,6 +461,8 @@ def main():
     parser.add_argument('--experiment', type=str, required=True)
     parser.add_argument('--model', type=str, required=True)
     parser.add_argument('--classes', type=int, required=True)
+    parser.add_argument('--iswavelet', type=str, required=True)
+
     args = parser.parse_args()
 
     last_loss = LastLoss()
@@ -449,6 +493,7 @@ def main():
     loss = smp.losses.DiceLoss(mode='multiclass')
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(DEVICE)
 
     OPTIM_NAME = 'AdamW'
 
@@ -483,8 +528,7 @@ def main():
 
     train_transform = A.Compose(
         [
-            A.PadIfNeeded(min_height=args.minheight,
-                          min_width=args.minwidth, border_mode=4),
+            A.PadIfNeeded(min_height=args.minheight, min_width=args.minwidth, border_mode=4),
             A.Resize(args.minheight, args.minwidth),
             A.RandomBrightnessContrast(
                 brightness_limit=0.3, contrast_limit=0.3, p=0.5),
@@ -520,37 +564,42 @@ def main():
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True, is_validation2=True)
 
-    # initialize model
-    # model = smp.Unet(
-    #    encoder_name=ENCODER,
-    #    encoder_weights=ENCODER_WEIGHTS,
-    #    in_channels=3,
-    #    classes=len(CLASSES),
-    #    activation=ACTIVATION,
-    # )
+    #initialize model
+    model = smp.Unet(
+       encoder_name=args.encoder,
+       encoder_weights=args.encoderweights,
+       in_channels=3,
+       classes=args.classes,
+       activation=None,
+    ).to(DEVICE)
 
-    wavelet_model = UNET(in_channels=3, out_channels=6).to(DEVICE)
+    # wavelet model
+    # model = UNET(in_channels=3, out_channels=6).to(DEVICE)
 
-    optimizer = optim.AdamW(params=wavelet_model.parameters(),
-                            lr=args.lr, betas=(args.beta1, args.beta2), eps=args.epsilon)
-    # optimizer = optim.AdamW(params=wavelet_model.parameters(), lr=args.lr)
+    # optimizer = optim.AdamW(params=wavelet_model.parameters(),
+    #                         lr=args.lr, betas=(args.beta1, args.beta2), eps=args.epsilon)
+    optimizer = optim.AdamW(params=model.parameters(), lr=args.lr)
 
-    scaler = torch.cuda.amp.GradScaler()
+    if DEVICE == 'cuda':
+        scaler = torch.cuda.amp.GradScaler()
 
-    scheduler = StepLR(optimizer=optimizer,
-                    step_size=args.stepsize, gamma=args.gamma)
+    # scheduler = StepLR(optimizer=optimizer,
+    #                 step_size=args.stepsize, gamma=args.gamma)
 
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
-        train_fn(trainDL, wavelet_model, optimizer,
-                 loss, scaler, DEVICE, last_loss, run)
-        check_accuracy(args.model, testDL, wavelet_model, run, DEVICE)
-        scheduler.step()
+        if DEVICE == 'cuda':
+            train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+        else:
+            train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch, args.iswavelet)
+        print('trainloop done')
+        check_accuracy(args.model, testDL, model, run, DEVICE)
+        # scheduler.step()
 
         if epoch % 20 == 0:
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': wavelet_model.state_dict(),
+                'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': last_loss.get_ll(),
             }, '{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
@@ -559,7 +608,7 @@ def main():
 
             save_predictions_as_imgs(
                 testDL,
-                wavelet_model,
+                model,
                 folder=IMG_SAVE_DIR,
                 model_name=args.model,
                 device=DEVICE,
@@ -568,7 +617,7 @@ def main():
 
             save_predictions_as_imgs(
                 valDL2,
-                wavelet_model,
+                model,
                 folder=VAL_IMG_SAVE_DIR,
                 model_name=args.model,
                 device=DEVICE,

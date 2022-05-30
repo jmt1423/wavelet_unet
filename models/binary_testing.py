@@ -1,6 +1,5 @@
 import argparse
 import os
-import time
 
 import albumentations as A
 import neptune.new as neptune
@@ -19,7 +18,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 import config
-from models.other.meter import AverageValueMeter
+from meter import AverageValueMeter
 from multi_scale_unet import UNET
 
 torch.autograd.set_detect_anomaly(False)
@@ -161,11 +160,7 @@ def check_accuracy(metrics, loader, model, run, device='cpu'):
 
     model.train()
 
-def save_predictions_as_imgs(loader,
-                             model,
-                             folder,
-                             device='cpu',
-                             ):
+def save_predictions_as_imgs(val_or_test, metrics, loader, model, run, folder, device='cpu',):
     """TODO: Docstring for save_predictions_as_imgs.
     :loader: TODO
     :model: TODO
@@ -174,15 +169,31 @@ def save_predictions_as_imgs(loader,
     :returns: TODO
     """
     model.eval()
+    metrics_meters = {metric.__name__: AverageValueMeter()
+                      for metric in metrics}
 
-    for idx, (x, y) in enumerate(loader):
-        x = x.float()
-        with torch.no_grad():
+    with torch.no_grad():
+        for idx, (x, y) in enumerate(loader):
+            x = x.float().to(device)
+            y = y.to(device).unsqueeze(1)
             preds = torch.sigmoid(model(x))
+
+            for metric_fn in metrics:
+                metric_value = metric_fn(preds, y).cpu().detach().numpy()
+                metrics_meters[metric_fn.__name__].add(metric_value)
+
+            metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+
             preds = (preds > 0.5).float()
-        print('saving_imagessssss')
-        torchvision.utils.save_image(preds, f"{folder}pred_{idx}.png")
-        torchvision.utils.save_image(y.unsqueeze(1), f"{folder}{idx}.png")
+            # print('saving_imagessssss')
+            torchvision.utils.save_image(preds, f"{folder}pred_{idx}.png")
+            torchvision.utils.save_image(y, f"{folder}{idx}.png")
+    
+    # log metrics into neptune
+    run[f'metrics/{val_or_test}/iou_score'].log(metrics_logs['iou_score'])
+    run[f'metrics/{val_or_test}/f1_score'].log(metrics_logs['fscore'])
+    run[f'metrics/{val_or_test}/precision'].log(metrics_logs['precision'])
+    run[f'metrics/{val_or_test}/recall'].log(metrics_logs['recall'])
 
     model.train()
 
@@ -198,13 +209,15 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, run, ll):
     loop = tqdm(loader, disable=True)
 
     for batch_idx, (data, targets) in enumerate(loop):
-        data = data.to(device).float()
-        targets = targets.to(device).unsqueeze(1).float()
-        #data = data.permute(0,1,3,2)
+        data = data.to(device=device).float()
+        targets = targets.to(device=device)
+        targets = targets.long()
+        #data = data.permute(0,3,1,2)  # correct shape for image
+        targets = targets.squeeze(1)
 
         # forward
         with torch.cuda.amp.autocast():
-            predictions = model(data)
+            predictions = model(data.contiguous())
             loss = loss_fn(predictions, targets)
 
         # backward
@@ -212,14 +225,67 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-
         run['metrics/train/loss'].log(loss.item())
-        ll.set_ll(loss.item())
+
+        # update loop
+        loop.set_postfix(loss=loss.item())
+        del loss, predictions
+        # data = data.to(device).float()
+        # targets = targets.to(device).unsqueeze(1).float()
+        # #data = data.permute(0,1,3,2)
+
+        # # forward
+        # with torch.cuda.amp.autocast():
+        #     predictions = model(data)
+        #     loss = loss_fn(predictions, targets)
+
+        # # backward
+        # optimizer.zero_grad()
+        # scaler.scale(loss).backward()
+        # scaler.step(optimizer)
+        # scaler.update()
+
+        # run['metrics/train/loss'].log(loss.item())
+        # ll.set_ll(loss.item())
+
+        # # update loop
+    
+        # loop.set_postfix(loss=loss.item())
+
+def train_cpu(loader, model, optimizer, loss_fn, device, run, epoch):
+    """TODO: Docstring for train_fn.
+    :loader: TODO
+    :model: TODO
+    :optimizer: TODO
+    :loss_fn: TODO
+    :scaler: TODO
+    :returns: TODO
+    """
+    loop = tqdm(loader, disable=True)
+    running_loss = 0.0
+    for batch_idx, (data, targets) in enumerate(loop):
+        data = data.to(device).float()
+        targets = targets.to(device).unsqueeze(1).float()
+        #data = data.permute(0,1,3,2)
+
+        optimizer.zero_grad()
+        # forward
+        predictions = model(data)
+        loss = loss_fn(predictions, targets)
+        loss.backward()
+        optimizer.step()
+        
+        running_loss += loss.item()
+        if batch_idx % 2000 == 0:    # print every 2000 mini-batches
+            print(f'[{epoch + 1}, {batch_idx + 1:5d}] loss: {running_loss / 2000:.3f}')
+            running_loss = 0.0
+        run['metrics/train/loss'].log(loss.item())
 
         # update loop
     
         loop.set_postfix(loss=loss.item())
     
+
 def get_files(img_dir):
     path_list = []
     for filename in os.listdir(img_dir):
@@ -268,6 +334,7 @@ def main():
     loss = smp.losses.DiceLoss(mode='binary')
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print('THIS IS THE DEVICE TO USE: ', DEVICE)
     last_loss = LastLoss()
 
     OPTIM_NAME = 'AdamW'
@@ -304,6 +371,7 @@ def main():
     run['parameters/optimizer/gamma'].log(args.gamma)
 
     train_transform = A.Compose([
+        A.PadIfNeeded(min_height=args.minheight, min_width=args.minwidth, border_mode=4),
         A.Resize(height=args.minheight, width=args.minwidth),
         A.Rotate(limit=35, p=1.0),
         A.HorizontalFlip(p=0.5),
@@ -328,7 +396,7 @@ def main():
     ], )
 
     val_transform = A.Compose(  # validation image transforms
-        [A.Resize(1024, 256),ToTensorV2()]
+        [A.Resize(256, 256),ToTensorV2()]
     )
 
         # get the dataloaders
@@ -342,20 +410,17 @@ def main():
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True)
 
-        # initialize model
-    model = smp.Unet(
-        encoder_name=args.encoder,
-        encoder_weights=args.encoderweights,
-        in_channels=3,
-        classes=1,
-        activation=args.activation,
-    )
-    model = model.to(DEVICE)
+    # initialize model
+    # model = smp.Unet(
+    #     encoder_name=args.encoder,
+    #     encoder_weights=args.encoderweights,
+    #     in_channels=3,
+    #     classes=1,
+    #     activation=args.activation,
+    # ).to(DEVICE)
+    model = UNET(in_channels=3, out_channels=1).to(DEVICE)
+
     model = nn.DataParallel(model)
-    # wavelet_model = UNET(in_channels=3, out_channels=6).to(DEVICE)
-
-    # metrics have been defined in the custom training loop as giving them in a list object did not work for me
-
 
     # define optimizer and learning rate
     optimizer = optim.AdamW(params=model.parameters(),
@@ -368,7 +433,8 @@ def main():
         smp.utils.metrics.Fscore(threshold=0.5),
     ]
 
-    scaler = torch.cuda.amp.GradScaler()
+    if torch.cuda.is_available():
+        scaler = torch.cuda.amp.GradScaler()
 
     scheduler = StepLR(optimizer=optimizer,
                     step_size=args.stepsize, gamma=args.gamma)
@@ -376,7 +442,12 @@ def main():
     print(args.epochs)
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
-        train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+        if torch.cuda.is_available():
+            print('training cudaaaa')
+            train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+        else:
+            print('not training cuda')
+            train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         #train_wavelet(trainDL, wavelet_model, optimizer, loss, scaler)
         check_accuracy(metrics, testDL, model, run, DEVICE)
         scheduler.step()
@@ -392,15 +463,21 @@ def main():
             run["model_checkpoints/epoch{}".format(epoch)].upload('{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
 
             save_predictions_as_imgs(
+                'test',
+                metrics,
                 testDL,
                 model,
+                run,
                 folder=IMG_SAVE_DIR,
                 device=DEVICE,
             )
 
             save_predictions_as_imgs(
+                'validation',
+                metrics,
                 valDL,
                 model,
+                run,
                 folder=VAL_IMG_SAVE_DIR,
                 device=DEVICE,
             )

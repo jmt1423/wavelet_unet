@@ -1,5 +1,5 @@
 """
-This script creates the architecture for a wavelet-unet
+This model creates the architecture for a wavelet-unet
 
 The wavelet transform used takes a tensor as input and outputs the
 LL, LH, HL, and HH sub-bands. LL is the appoximate image, LH extracts
@@ -8,15 +8,11 @@ subband outputs the diagonal features from an input image.
 """
 
 import torch
-from torch._C import dtype
-from torch.functional import Tensor
 import torch.nn.functional as F
 import torch.nn as nn
 import torchvision.transforms.functional as TF
-from pytorch_wavelets import DWTForward, DWTInverse, DTCWTForward, DTCWTInverse
+from pytorch_wavelets import DWTForward
 import torchvision.models as models
-import time
-from torch.autograd import Variable
 
 
 class DwtPyramidBlock(nn.Module):
@@ -29,9 +25,15 @@ class DwtPyramidBlock(nn.Module):
         self.og_size_list = og_size_list
 
         self.dwtList = []
+        print('before if')
+        if torch.cuda.is_available():
+            print('loop: wavelet cuda')
+            self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
+        else:
+            print('loop: wavelet cpu')
+            self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode)
+        print('after if')
 
-        self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
-    
     def forward(self, x):
         """
         This recursive forward pass function create a multi-scale representation 
@@ -72,7 +74,7 @@ class DwtPyramidBlock(nn.Module):
                     (p_size, p_size_1, p_size, p_size_1),
                     'constant',  # zero padding so constant value of 0's
                     0
-                )  # .contiguous() - this might be needed depending on if pytorch yells at me :(
+                )  # .contiguous()
             
             # after padding is done, now we can concat all tensor objects together
             final_pyramid = torch.cat((
@@ -89,7 +91,7 @@ class DwtPyramidBlock(nn.Module):
                 #self.dwtList[10],
                 #self.dwtList[11],
             ), dim=1)
-            self.dwtList = []  # IMPORTANT, reset list every time a pyramid is built otherwise the model will run out of memory
+            self.dwtList = []
             self.depth = 0  # same as above.
             return final_pyramid
 
@@ -113,27 +115,6 @@ class DwtPyramidBlock(nn.Module):
         h2 = list(x.shape)[3]
 
         return (h1-h2)/2
-
-
-
-class DtcwtPyramidBlock(nn.Module):
-    """
-    This method is similar to the above wavelet pyramid method, however it uses 
-    the dual-tree complex wavelet, which is a shift invariant wavelet transfor that
-    outputs six subbands rather than three. 
-
-    What makes this wavelet interesting to use, is that not only is it able to hold real
-    numbers, but imaginary as well. 
-
-    The sub-bands represent 15, 45, 75, 105, 135, and 165 degree wavelets.
-    """
-    def __init__(self, biort : str, q_shift : str):
-        super(DtcwtPyramidBlock, self).__init__()
-        self.biort = biort
-        self.q_shift = q_shift
-    
-    def forward(self, x : Tensor):
-        print(x)
 
 
 class DoubleConv(nn.Module):
@@ -203,8 +184,13 @@ class UNET(nn.Module):
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # initialize wavelet transforms for use in forward
-        self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
+        if torch.cuda.is_available():
+            print('model dwt: cuda')
+            # initialize wavelet transforms for use in forward
+            self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
+        else:
+            print('main: cpu')
+            self.dwtF = DWTForward(J=3, mode='zero', wave='haar')
 
         self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave='haar', depth=0, og_size_list=[0, 0, 16, 16])
 
@@ -236,35 +222,13 @@ class UNET(nn.Module):
         :x: TODO
         :returns: TODO
         """
-
-        # load backbone model se-resnext to extract meaningful features from the start
         self.pretrained(x)
 
-        # for each skip connection, there is also one wavelet connection to
-        # decrease information loss
         skip_connections = []
-        # wavelet_skips = []
-        # x1_hh = x  # double skip connection
-        # temp_var = 0
 
         for down in self.downs:
-            # separate x into two variables to perform pooling and DWT on the features
-
-            # down-scale using pooling operations, these will be the features passed down the nextwork as well as across
             x = down(x)
-            # x1_hh = down(x1_hh)  # get same channel size
-
-            # downscale using DWT, these features are not propogated down the network
-            # they are used in tandem with skip connections to create more meaningful
-            # data representations when we are upscaling images back to their original
-
-            #print('---------------x: ', x.shape)
-            #print('---------------x1: ', x1_hh.shape)
-            
             skip_connections.append(x)
-
-            # to increase spatial information gain wavelet decompositions will be used
-            # alongside pooling operations and concatenated with everything at the end
             x = self.pool(x)
         
         x = self.bottleneck(x)
@@ -273,14 +237,10 @@ class UNET(nn.Module):
         pyramid = self.dwt_pyramid_block(x)
         x = torch.cat((x, pyramid), dim=1)  # concat pyramid and original input x
 
-        # now due to the large amount of channels, x should be put through a projection layer
-        # to reduce the number of feature channels in the architecture.
         x = self.projection_layer(x)
 
 
         skip_connections = skip_connections[::-1]
-        # wavelet_skips = wavelet_skips[::-1]
-        # temp2 = 0
 
         for idx in range(0, len(self.ups), 2):
             x = self.ups[idx](x)
@@ -289,25 +249,8 @@ class UNET(nn.Module):
             if x.shape != skip_connection.shape:
                 x = TF.resize(x, size=skip_connection.shape[2:])
 
-            
             concat_skip = torch.cat((skip_connection, x), dim=1)
             x = self.ups[idx + 1](concat_skip)
         
         x = self.final_conv(x)
         return x
-
-
-def testArch():
-    """testing the unet architecture
-    :returns: TODO
-    """
-    x = torch.randn((3, 3, 256, 256))
-    model = UNET(in_channels=3, out_channels=6)
-    preds = model(x)
-    print(preds.shape)
-    print(x.shape)
-    assert preds.shape == x.shape
-
-
-if __name__ == "__main__":
-    testArch()

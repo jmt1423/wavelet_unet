@@ -7,7 +7,7 @@ import torch.nn as nn
 import re
 import models.other.functional as F
 import time
-from models.other.meter import AverageValueMeter
+from models.meter import AverageValueMeter
 
 DEVICE = 'cuda'
 
