@@ -334,7 +334,6 @@ def main():
     loss = smp.losses.DiceLoss(mode='binary')
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print('THIS IS THE DEVICE TO USE: ', DEVICE)
     last_loss = LastLoss()
 
     OPTIM_NAME = 'AdamW'
@@ -410,17 +409,55 @@ def main():
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True)
 
-    # initialize model
-    # model = smp.Unet(
-    #     encoder_name=args.encoder,
-    #     encoder_weights=args.encoderweights,
-    #     in_channels=3,
-    #     classes=1,
-    #     activation=args.activation,
-    # ).to(DEVICE)
-    model = UNET(in_channels=3, out_channels=1).to(DEVICE)
-
-    model = nn.DataParallel(model)
+    if args.model in ['unet']:
+        print('starting unet')
+        model = smp.Unet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=1,
+            activation=args.activation,
+        ).to(DEVICE)
+    elif args.model in ['wavelet-unet']:
+        model = UNET(in_channels=3, out_channels=1).to(DEVICE)
+    elif args.model in ['manet']:
+        print('starting manet')
+        model = smp.MAnet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=1,
+            activation=args.activation,
+        ).to(DEVICE)
+    elif args.model in ['pspnet']:
+        print('starting pspnet')
+        model = smp.PSPNet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=1,
+            activation=args.activation,
+        ).to(DEVICE)
+    elif args.model in ['fpn']:
+        print('starting fpn')
+        model = smp.FPN(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=1,
+            activation=args.activation,
+        ).to(DEVICE)
+    elif args.model in ['unetpp']:
+        print('starting unetpp')
+        model = smp.UnetPlusPlus(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=1,
+            activation=args.activation,
+        ).to(DEVICE)
+    
+    # model = nn.DataParallel(model)
 
     # define optimizer and learning rate
     optimizer = optim.AdamW(params=model.parameters(),
@@ -439,16 +476,12 @@ def main():
     scheduler = StepLR(optimizer=optimizer,
                     step_size=args.stepsize, gamma=args.gamma)
 
-    print(args.epochs)
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
         if torch.cuda.is_available():
-            print('training cudaaaa')
             train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
         else:
-            print('not training cuda')
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
-        #train_wavelet(trainDL, wavelet_model, optimizer, loss, scaler)
         check_accuracy(metrics, testDL, model, run, DEVICE)
         scheduler.step()
 
