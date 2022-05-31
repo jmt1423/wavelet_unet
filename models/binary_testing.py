@@ -128,9 +128,11 @@ def get_loaders(
 
 def check_accuracy(metrics, loader, model, run, device='cpu'):
     """ Custom method to calculate accuracy of testing data
+    :metrics: list of metrics to be calculated
     :loader: dataloader objects
     :model: model to test
-    :device: cpu or gpu
+    :run: neptune run object for experiment tracking
+    :device: cpu or gpu, defaulted to CPU
     """
 
     model.eval()  # set model for evaluation
@@ -148,33 +150,36 @@ def check_accuracy(metrics, loader, model, run, device='cpu'):
                 metrics_meters[metric_fn.__name__].add(metric_value)
 
             metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
-
-    #print(metrics_logs)
-    #print([type(k) for k in metrics_logs.values()])
-
-    # log metrics into neptune
-    run['metrics/train/iou_score'].log(metrics_logs['iou_score'])
-    run['metrics/train/f1_score'].log(metrics_logs['fscore'])
-    run['metrics/train/precision'].log(metrics_logs['precision'])
-    run['metrics/train/recall'].log(metrics_logs['recall'])
+            # log metrics into neptune
+            run['metrics/train/iou_score'].log(metrics_logs['iou_score'])
+            run['metrics/train/f1_score'].log(metrics_logs['fscore'])
+            run['metrics/train/precision'].log(metrics_logs['precision'])
+            run['metrics/train/recall'].log(metrics_logs['recall'])
 
     model.train()
 
 def save_predictions_as_imgs(val_or_test, metrics, loader, model, run, folder, device='cpu',):
-    """TODO: Docstring for save_predictions_as_imgs.
-    :loader: TODO
-    :model: TODO
-    :folder: TODO
-    :device: TODO
-    :returns: TODO
+    """
+    Method that saves predictions to correct directory along with accuracy metrics of
+    each predicted image
+
+    :val_or_test: str object for saving in correct directory
+    :metrics: list of metrics to be calculated
+    :loader: dataloader object
+    :model: model to get predictions from
+    :folder: directory to save predictions
+    :device: cpu or gpu
+    :returns:
     """
     model.eval()
+    gt_tensor = torch.Tensor().cuda()
+    preds_tensor = torch.Tensor().cuda()
     metrics_meters = {metric.__name__: AverageValueMeter()
                       for metric in metrics}
 
     with torch.no_grad():
         for idx, (x, y) in enumerate(loader):
-            x = x.float().to(device)
+            x = x.to(device).float()
             y = y.to(device).unsqueeze(1)
             preds = torch.sigmoid(model(x))
 
@@ -183,28 +188,33 @@ def save_predictions_as_imgs(val_or_test, metrics, loader, model, run, folder, d
                 metrics_meters[metric_fn.__name__].add(metric_value)
 
             metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
+            run[f'metrics/{val_or_test}/iou_score'].log(metrics_logs['iou_score'])
+            run[f'metrics/{val_or_test}/f1_score'].log(metrics_logs['fscore'])
+            run[f'metrics/{val_or_test}/precision'].log(metrics_logs['precision'])
+            run[f'metrics/{val_or_test}/recall'].log(metrics_logs['recall'])
 
             preds = (preds > 0.5).float()
-            # print('saving_imagessssss')
-            torchvision.utils.save_image(preds, f"{folder}pred_{idx}.png")
-            torchvision.utils.save_image(y, f"{folder}{idx}.png")
+            
+            gt_tensor = torch.cat((gt_tensor, y), 2)
+            preds_tensor = torch.cat((preds_tensor, preds), 2)
+
+    torchvision.utils.save_image(preds_tensor, f"{folder}pred.png")
+    torchvision.utils.save_image(gt_tensor, f"{folder}gt.png")
     
     # log metrics into neptune
-    run[f'metrics/{val_or_test}/iou_score'].log(metrics_logs['iou_score'])
-    run[f'metrics/{val_or_test}/f1_score'].log(metrics_logs['fscore'])
-    run[f'metrics/{val_or_test}/precision'].log(metrics_logs['precision'])
-    run[f'metrics/{val_or_test}/recall'].log(metrics_logs['recall'])
 
     model.train()
 
-def train_fn(loader, model, optimizer, loss_fn, scaler, device, run, ll):
-    """TODO: Docstring for train_fn.
-    :loader: TODO
-    :model: TODO
-    :optimizer: TODO
-    :loss_fn: TODO
-    :scaler: TODO
-    :returns: TODO
+def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+    """
+    Trains the wavelet-unet model
+
+    :loader: dataloader object
+    :model: model to train
+    :optimizer: optimizer used for training the model
+    :loss_fn: loss function
+    :scaler: scaler object, only cuda
+    :returns:
     """
     loop = tqdm(loader, disable=True)
 
@@ -230,36 +240,51 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         # update loop
         loop.set_postfix(loss=loss.item())
         del loss, predictions
-        # data = data.to(device).float()
-        # targets = targets.to(device).unsqueeze(1).float()
-        # #data = data.permute(0,1,3,2)
 
-        # # forward
-        # with torch.cuda.amp.autocast():
-        #     predictions = model(data)
-        #     loss = loss_fn(predictions, targets)
+def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+    """
+    Trains the baseline models
 
-        # # backward
-        # optimizer.zero_grad()
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
+    :loader: dataloader object
+    :model: model to train
+    :optimizer: optimizer used for training the model
+    :loss_fn: loss function
+    :scaler: scaler object, only cuda
+    :returns:
+    """
+    loop = tqdm(loader, disable=True)
 
-        # run['metrics/train/loss'].log(loss.item())
-        # ll.set_ll(loss.item())
+    for batch_idx, (data, targets) in enumerate(loop):
+        data = data.to(device).float()
+        targets = targets.to(device).unsqueeze(1).float()
+        #data = data.permute(0,1,3,2)
 
-        # # update loop
+        # forward
+        with torch.cuda.amp.autocast():
+            predictions = model(data)
+            loss = loss_fn(predictions, targets)
+
+        # backward
+        optimizer.zero_grad()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        run['metrics/train/loss'].log(loss.item())
+        ll.set_ll(loss.item())
+
+        # update loop
     
-        # loop.set_postfix(loss=loss.item())
+        loop.set_postfix(loss=loss.item())
 
 def train_cpu(loader, model, optimizer, loss_fn, device, run, epoch):
-    """TODO: Docstring for train_fn.
-    :loader: TODO
-    :model: TODO
-    :optimizer: TODO
-    :loss_fn: TODO
-    :scaler: TODO
-    :returns: TODO
+    """trains model on cpu, mainly used for testing before GPU runs
+    :loader: DataLoader object
+    :model: model for training
+    :optimizer: optimizer object
+    :loss_fn: loss function
+    :scaler: scaler object, only for cuda devices
+    :returns:
     """
     loop = tqdm(loader, disable=True)
     running_loss = 0.0
@@ -284,7 +309,6 @@ def train_cpu(loader, model, optimizer, loss_fn, device, run, epoch):
         # update loop
     
         loop.set_postfix(loss=loss.item())
-    
 
 def get_files(img_dir):
     path_list = []
@@ -326,7 +350,7 @@ def main():
     args = parser.parse_args()
     
     run = neptune.init(
-        project="jmt1423/coastal-segmentation",
+        project="PhD-Research/coastal-segmentation",
         source_files=['./*.ipynb', './*.py'],
         api_token=config.NEPTUNE_API_TOKEN,
     )
@@ -409,7 +433,7 @@ def main():
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True)
 
-    if args.model in ['unet']:
+    if args.model == 'unet':
         print('starting unet')
         model = smp.Unet(
             encoder_name=args.encoder,
@@ -418,9 +442,10 @@ def main():
             classes=1,
             activation=args.activation,
         ).to(DEVICE)
-    elif args.model in ['wavelet-unet']:
+    elif args.model == 'wavelet-unet':
+        print('starting wavelet-unet')
         model = UNET(in_channels=3, out_channels=1).to(DEVICE)
-    elif args.model in ['manet']:
+    elif args.model == 'manet':
         print('starting manet')
         model = smp.MAnet(
             encoder_name=args.encoder,
@@ -429,7 +454,7 @@ def main():
             classes=1,
             activation=args.activation,
         ).to(DEVICE)
-    elif args.model in ['pspnet']:
+    elif args.model == 'pspnet':
         print('starting pspnet')
         model = smp.PSPNet(
             encoder_name=args.encoder,
@@ -438,7 +463,7 @@ def main():
             classes=1,
             activation=args.activation,
         ).to(DEVICE)
-    elif args.model in ['fpn']:
+    elif args.model == 'fpn':
         print('starting fpn')
         model = smp.FPN(
             encoder_name=args.encoder,
@@ -447,7 +472,7 @@ def main():
             classes=1,
             activation=args.activation,
         ).to(DEVICE)
-    elif args.model in ['unetpp']:
+    elif args.model == 'unetpp':
         print('starting unetpp')
         model = smp.UnetPlusPlus(
             encoder_name=args.encoder,
@@ -479,13 +504,19 @@ def main():
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
         if torch.cuda.is_available():
-            train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+            if args.model == 'wavelet-unet':
+                print('training wavelet')
+                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+            else:
+                print('training baseline')
+                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
         else:
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
+        
         check_accuracy(metrics, testDL, model, run, DEVICE)
         scheduler.step()
 
-        if epoch % 10 == 0:
+        if epoch % 15 == 0:  # save preds and model every 10 epochs
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -515,6 +546,7 @@ def main():
                 device=DEVICE,
             )
         
+            # upload images to neptune
             binary_result_paths = get_files(IMG_SAVE_DIR)
             binary_val_paths = get_files(VAL_IMG_SAVE_DIR)
 

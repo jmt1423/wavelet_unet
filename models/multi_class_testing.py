@@ -89,8 +89,8 @@ class Dataset(Dataset):
         return len(self.images)
 
     def mask_to_class_rgb(self, mask):
-        h = 256  # ========================================================================================================================
-        w = 256  # ========================================================================================================================
+        h = 32  # ========================================================================================================================
+        w = 512  # ========================================================================================================================
         mask = torch.from_numpy(mask)
         mask = torch.squeeze(mask)  # remove 1
 
@@ -231,8 +231,36 @@ def check_accuracy(model_name, loader, model, run, device='cpu'):
     run['metrics/train/precision'].log(precision_score)
     run['metrics/train/recall'].log(recall_score)
 
+def train_baseline(loader, model, optimizer, loss_fn, scaler, device, ll, run):
+    loop = tqdm(loader)  # just a nice library to keep track of loops
+    # ===========================================================================
+    model = model.to(device)
+    for batch_idx, (data, targets) in enumerate(loop):  # iterate through dataset
+        data = data.to(device=device).float()
+        targets = targets.to(device=device).float()
+        targets = targets.unsqueeze(1)
+        data = data.permute(0,3,2,1)  # correct shape for image# ===========================================================================
+        targets = targets.to(torch.int64)
 
-def train_fn(loader, model, optimizer, loss_fn, scaler, device, ll, run):
+        # forward
+        with torch.cuda.amp.autocast():
+            predictions = model(data)
+            loss = loss_fn(predictions, targets)
+
+        # backward
+        optimizer.zero_grad()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+        # loss_values.append(loss.item())
+        run['training/batch/loss'].log(loss)
+        ll.set_ll(loss.item())
+
+        #update loop
+        loop.set_postfix(loss=loss.item())
+
+
+def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, ll, run):
     """ Custom training loop for models
 
     :loader: dataloader object
@@ -244,35 +272,8 @@ def train_fn(loader, model, optimizer, loss_fn, scaler, device, ll, run):
 
     """
     loop = tqdm(loader)  # just a nice library to keep track of loops
-    # ===========================================================================
-    model = model.to(device)
+
     for batch_idx, (data, targets) in enumerate(loop):  # iterate through dataset
-        # data = data.to(device=device).float()
-        # targets = targets.to(device=device).float()
-        # targets = targets.unsqueeze(1)
-        # data = data.permute(0,3,2,1)  # correct shape for image# ===========================================================================
-        # targets = targets.to(torch.int64)
-
-        # # forward
-        # with torch.cuda.amp.autocast():
-        #     predictions = model(data)
-        #     loss = loss_fn(predictions, targets)
-
-        # # backward
-        # optimizer.zero_grad()
-        # scaler.scale(loss).backward()
-        # scaler.step(optimizer)
-        # scaler.update()
-        # # loss_values.append(loss.item())
-        # run['training/batch/loss'].log(loss)
-        # ll.set_ll(loss.item())
-
-        # #update loop
-        # loop.set_postfix(loss=loss.item())
-
-        # =============================================
-        # ============ wavelet training loop ==========
-        # =============================================
         data = data.to(device=device).float()
         targets = targets.to(device=device)
         targets = targets.long()
@@ -335,7 +336,6 @@ def train_cpu(loader, model, optimizer, loss_fn, device, run, epoch, iswavelet):
         # update loop
     
         loop.set_postfix(loss=loss.item())
-    
 
 def get_files(img_dir):
     path_list = []
@@ -345,7 +345,6 @@ def get_files(img_dir):
             path_list.append(f)
 
     return path_list
-
 
 def save_predictions_as_imgs(loader,
                              model,
@@ -365,7 +364,6 @@ def save_predictions_as_imgs(loader,
     # define scores to track
     y_pred = []
     y_true = []
-    colors = [(0, 0, 255/255), (225/255, 0, 225/255), (255/255, 0, 0), (255/255, 225/255, 225/255), (255/255, 255/255, 0)]
     confmat = ConfusionMatrix(num_classes=6, normalize='true')
     CLASSES = ['background', 'ocean', 'wetsand',
                'buildings', 'vegetation', 'drysand']
@@ -373,8 +371,11 @@ def save_predictions_as_imgs(loader,
 
     if is_validation:
         val_or_test = 'val'
+        colors = [(0, 0, 255/255), (128/255, 0, 128/255), (255/255, 0, 0), (255/255, 225/255, 225/255), (255/255, 255/255, 0)]
     else:
         val_or_test = 'test'
+        colors = [(0, 0, 255/255), (225/255, 0, 225/255), (255/255, 0, 0), (255/255, 225/255, 225/255), (255/255, 255/255, 0)]
+
 
     model.eval()  # set model for evaluation
     with torch.no_grad():  # do not calculate gradients
@@ -394,8 +395,6 @@ def save_predictions_as_imgs(loader,
             y_pred.append(preds)
             y_true.append(y)
 
-    #m_order = [2,0,1,3]
-    #y_true = [y_true[i] for i in m_order]
     cmp = ListedColormap(colors=colors)
     y_true = torch.cat(y_true, dim=2)
 
@@ -404,15 +403,8 @@ def save_predictions_as_imgs(loader,
     fop = y_true.squeeze().cpu().numpy()
     fop2 = y_pred.squeeze().cpu().numpy()
     
-    # rescaled = (255.0 / fop.max() * (fop - fop.min())).astype(np.uint8)
-    # rescaled2 = (255.0 / fop2.max() * (fop2 - fop2.min())).astype(np.uint8)
-
-    #matplotlib.image.imsave(f"{folder}multiclass_{val_or_test}_gt.jpg", fop, cmap=cmp)
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.jpg', fop, cmap=cmp)
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, cmap=cmp)
-
-    #matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, cmap=cmp)
-    #plt.close()
 
     xut = y_pred
     xutrue = y_true
@@ -431,8 +423,6 @@ def save_predictions_as_imgs(loader,
     ax.set_yticklabels(CLASSES, rotation=20)
     plt.savefig(f'{folder}multiclass_{val_or_test}_heatmap.jpg',
                 dpi=100, bbox_inches="tight")
-    # plt.show()
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -467,15 +457,8 @@ def main():
 
     last_loss = LastLoss()
 
-    # just checking which devices are available for training
-    # avail = torch.cuda.is_available()
-    # devCnt = torch.cuda.device_count()
-    # devName = torch.cuda.get_device_name(0)
-    # print("Available: " + str(avail) + ", Count: " +
-    #       str(devCnt) + ", Name: " + str(devName))
-
     run = neptune.init(
-        project="jmt1423/coastal-segmentation",
+        project="PhD-Research/coastal-segmentation",
         source_files=['./*.ipynb', './*.py'],
         api_token=config.NEPTUNE_API_TOKEN,
     )
@@ -493,7 +476,6 @@ def main():
     loss = smp.losses.DiceLoss(mode='multiclass')
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(DEVICE)
 
     OPTIM_NAME = 'AdamW'
 
@@ -564,18 +546,55 @@ def main():
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True, is_validation2=True)
 
-    #initialize model
-    model = smp.Unet(
-       encoder_name=args.encoder,
-       encoder_weights=args.encoderweights,
-       in_channels=3,
-       classes=args.classes,
-       activation=None,
-    ).to(DEVICE)
-
-    # wavelet model
-    # model = UNET(in_channels=3, out_channels=6).to(DEVICE)
-
+    if args.model == 'unet':
+        print('starting unet')
+        model = smp.Unet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=args.classes,
+            activation=None,
+        ).to(DEVICE)
+    elif args.model == 'wavelet-unet':
+        print('starting wavelet-unet')
+        model = UNET(in_channels=3, out_channels=1).to(DEVICE)
+    elif args.model == 'manet':
+        print('starting manet')
+        model = smp.MAnet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=args.classes,
+            activation=None,
+        ).to(DEVICE)
+    elif args.model == 'pspnet':
+        print('starting pspnet')
+        model = smp.PSPNet(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=args.classes,
+            activation=None,
+        ).to(DEVICE)
+    elif args.model == 'fpn':
+        print('starting fpn')
+        model = smp.FPN(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=args.classes,
+            activation=None,
+        ).to(DEVICE)
+    elif args.model == 'unetpp':
+        print('starting unetpp')
+        model = smp.UnetPlusPlus(
+            encoder_name=args.encoder,
+            encoder_weights=args.encoderweights,
+            in_channels=3,
+            classes=6,
+            activation=None,
+        ).to(DEVICE)
+    
     # optimizer = optim.AdamW(params=wavelet_model.parameters(),
     #                         lr=args.lr, betas=(args.beta1, args.beta2), eps=args.epsilon)
     optimizer = optim.AdamW(params=model.parameters(), lr=args.lr)
@@ -583,18 +602,23 @@ def main():
     if DEVICE == 'cuda':
         scaler = torch.cuda.amp.GradScaler()
 
-    # scheduler = StepLR(optimizer=optimizer,
-    #                 step_size=args.stepsize, gamma=args.gamma)
+    scheduler = StepLR(optimizer=optimizer,
+                    step_size=args.stepsize, gamma=args.gamma)
 
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
-        if DEVICE == 'cuda':
-            train_fn(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+        if torch.cuda.is_available():
+            if args.model == 'wavelet-unet':
+                print('training wavelet')
+                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+            else:
+                print('training baseline')
+                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
         else:
-            train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch, args.iswavelet)
-        print('trainloop done')
+            train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
+        
         check_accuracy(args.model, testDL, model, run, DEVICE)
-        # scheduler.step()
+        scheduler.step()
 
         if epoch % 20 == 0:
             torch.save({
