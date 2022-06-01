@@ -7,6 +7,8 @@
 *.pth
 binary-model.e*
 binary-model.o*
+multi-class-model.e*
+multi-class-model.o*
 models/saved_images/*
 drone_images/*
 results/*

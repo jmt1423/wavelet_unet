@@ -13,7 +13,7 @@ module add cuda/11.2v2
 source activate $global_storage/conda_environments/py3.8-coastal-segmentation
 
 NOW=$(date +%Y%m%d_%H%M%S)
-MODEL="manet"
+MODEL="fpn"
 EXPERIMENT="$NOW"
 TRAIN_IMG_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_train/'
 TRAIN_MASK_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_trainannot/'
@@ -25,18 +25,18 @@ VAL_MASK_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/bva
 CLASSES=1
 BATCHSIZE=4
 VAL_BATCHSIZE=1
-LR=0.0000003
-GAMMA=0.1
-STEPSIZE=5
+LR=0.001
+GAMMA=0.05
+STEPSIZE=1
 EPOCHS=150
 ACTIVATION='sigmoid'
 ENCODER='resnet18'
 ENCODERWEIGHTS='imagenet'
-BETA1=0.9
+BETA1=0.7
 BETA2=0.99
-EPSILON=1e-6
-MINHEIGHT=256
-MINWIDTH=256
+EPSILON=1e-7
+MINHEIGHT=32
+MINWIDTH=512
 NUMWORKERS=16
 
 mkdir $global_storage/model_results/coastal_segmentation/$MODEL/binary/experiments/$EXPERIMENT

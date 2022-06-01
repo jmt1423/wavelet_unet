@@ -1,57 +1,53 @@
-from torch.optim.lr_scheduler import StepLR
-import config
-import neptune.new as neptune
-from neptune.new.types import File
-import argparse
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib
 import os
+import cv2
+from torch.optim.lr_scheduler import StepLR
 import torch
+import torch.nn as nn
 import torch.optim as optim
 import os
 import seaborn as sn
+import argparse
+import neptune.new as neptune
+from neptune.new.types import File
 import numpy as np
 from multi_scale_unet import UNET
+import cv2
 import matplotlib.pyplot as plt
+import torchvision.transforms as tvtransforms
+import time
 import torch
 import segmentation_models_pytorch as smp
 import metrics as smpmetrics
 import albumentations as A
 from tqdm import tqdm
+from meter import AverageValueMeter
 from albumentations.pytorch import ToTensorV2
+from torch.utils.data import Dataset as BaseDataset
 from PIL import Image
 import torch.nn.functional as F
 from torch.utils.data.dataset import Dataset
 import albumentations as A
 from torch.utils.data import DataLoader
-from matplotlib.colors import ListedColormap
 
+import torchmetrics
 from torchmetrics import ConfusionMatrix
+from matplotlib import cm
+from matplotlib.colors import ListedColormap
+import matplotlib.patches as mpatches
 
-matplotlib.use('Agg')
-#torch.autograd.set_detect_anomaly(False)
-#torch.autograd.profiler.profile(False)
-
-
-class LastLoss:
-    def __init__(self, ll=0):
-        self._ll = ll
-
-    # getter method
-    def get_ll(self):
-        return self._ll
-
-    # setter method
-    def set_ll(self, x):
-        self._ll = x
+from PIL import Image
+import numpy as np
+import os
+import config
 
 
 class Dataset(Dataset):
     """This method creates the dataset from given directories"""
-
-    def __init__(self, is_validation, image_dir, mask_dir, transform=None):
+    def __init__(self, image_dir, mask_dir, transform=None):
         """initialize directories
 
         :image_dir: TODO
@@ -59,20 +55,12 @@ class Dataset(Dataset):
         :transform: TODO
 
         """
-        if is_validation:
-            print('val is here')
-            self.img_height = 316
-            self.img_width = 316
-        else:
-            print('val is not here')
-            self.img_height = 20
-            self.img_width = 722
-
         self._image_dir = image_dir
         self._mask_dir = mask_dir
         self._transform = transform
         self.images = os.listdir(image_dir)
-        self.mapping = {(0, 0, 0): 0,
+
+        self.mapping = {(0, 0, 0): 0, # background class (black)
                         (0, 0, 255): 1,  # 0 = class 1
                         (225, 0, 225): 2,  # 1 = class 2
                         (255, 0, 0): 3,  # 2 = class 3
@@ -85,12 +73,17 @@ class Dataset(Dataset):
 
         """
         return len(self.images)
-
+    
     def mask_to_class_rgb(self, mask):
-        h = self.img_height  # ========================================================================================================================
-        w = self.img_width  # ========================================================================================================================
+        #print('----mask->rgb----')
+        h=20
+        w=722
         mask = torch.from_numpy(mask)
         mask = torch.squeeze(mask)  # remove 1
+
+        # check the present values in the mask, 0 and 255 in my case
+        #print('unique values rgb    ', torch.unique(mask)) 
+        # -> unique values rgb     tensor([  0, 255], dtype=torch.uint8)
 
         class_mask = mask
         class_mask = class_mask.permute(2, 0, 1).contiguous()
@@ -98,10 +91,14 @@ class Dataset(Dataset):
         mask_out = torch.zeros(h, w, dtype=torch.long)
 
         for k in self.mapping:
-            idx = (class_mask == torch.tensor(k, dtype=torch.uint8).unsqueeze(1).unsqueeze(2))
-            validx = (idx.sum(0) == 3)
+            idx = (class_mask == torch.tensor(k, dtype=torch.uint8).unsqueeze(1).unsqueeze(2))         
+            validx = (idx.sum(0) == 3)          
             mask_out[validx] = torch.tensor(self.mapping[k], dtype=torch.long)
 
+        # check the present values after mapping, in my case 0, 1, 2, 3PSPNet
+        #print('unique values mapped ', torch.unique(mask_out))
+        # -> unique values mapped  tensor([0, 1, 2, 3])
+       
         return mask_out
 
     def __getitem__(self, index):
@@ -115,13 +112,14 @@ class Dataset(Dataset):
         mask = np.array(Image.open(mask_path).convert("RGB"))
         mask = self.mask_to_class_rgb(mask).cpu().detach().numpy()
 
+
         if self._transform is not None:
             augmentations = self._transform(image=image, mask=mask)
             image = augmentations["image"]
             mask = augmentations["mask"]
+            
 
         return image, mask
-
 
 def get_loaders(
     train_dir,
@@ -133,7 +131,6 @@ def get_loaders(
     val_transform,
     num_workers=4,
     pin_memory=True,
-    is_validation2=False,
 ):
     """
     This method creates the dataloader objects for the training loops
@@ -145,11 +142,10 @@ def get_loaders(
     :returns: training and validation dataloaders
     recall
     """
-
-    train_ds = Dataset(is_validation2, image_dir=train_dir,
-                       mask_dir=train_mask_dir,
-                       transform=train_transform)
-
+    
+    train_ds = Dataset(image_dir=train_dir,
+                             mask_dir=train_mask_dir,
+                             transform=train_transform)
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -158,7 +154,7 @@ def get_loaders(
         shuffle=True,
     )
 
-    val_ds = Dataset(is_validation2,
+    val_ds = Dataset(
         image_dir=val_dir,
         mask_dir=val_mask_dir,
         transform=val_transform,
@@ -174,7 +170,7 @@ def get_loaders(
 
     return train_loader, val_loader
 
-def check_accuracy(model_name, loader, model, run, device='cpu'):
+def check_accuracyold(model_name, loader, model, run, device='cpu'):
     """ Custom method to calculate accuracy of testing data
     :loader: dataloader objects
     :model: model to test
@@ -227,10 +223,74 @@ def check_accuracy(model_name, loader, model, run, device='cpu'):
     run['metrics/train/precision'].log(precision_score)
     run['metrics/train/recall'].log(recall_score)
 
-def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+def check_accuracy(run, loader, model, device='cpu'):
+    """ Custom method to calculate accuracy of testing data
+    :loader: dataloader objects
+    :model: model to test
+    :device: cpu or gpu
+    """
+
+    # define scores to track
+    f1_score = 0
+    precision_score = 0
+    recall_score = 0
+    iou_score = 0
+    dataset_size = len(loader.dataset)  # number of images in the dataloader
+    y_pred = []
+    y_true = []
+
+    model.eval() # set model for evaluation
+    with torch.no_grad():  # do not calculate gradients
+        for x, y in loader:
+            x = x.to(device)
+            y = y.to(device).unsqueeze(1)
+            y = y.to(torch.int64)
+            #x = x.permute(0,1,2,3) # ===========================================================================
+            x = x.permute(0,3,2,1)
+            preds = model(x.float().contiguous())  # get pixel predictions from image tensor
+            preds = torch.argmax(preds, dim=1).unsqueeze(1).int()  # get maximum values of tensor along dimension 1
+
+
+            #print(preds.shape, y.shape)
+            tp, fp, fn, tn = smpmetrics.get_stats(preds, y, mode='multiclass', num_classes=6)  # get tp,fp,fn,tn from predictions
+
+            # compute metric
+            a = smpmetrics.iou_score(tp, fp, fn, tn, reduction="macro")
+            b = smpmetrics.f1_score(tp,fp,fn,tn, reduction='macro')
+            c = smpmetrics.precision(tp,fp,fn,tn, reduction='macro')
+            d = smpmetrics.recall(tp,fp,fn,tn, reduction='macro')
+
+            iou_score += a
+            f1_score += b
+            precision_score += c
+            recall_score += d
+
+    iou_score /= dataset_size  # averaged score across all images in directory
+    f1_score /= dataset_size
+    precision_score /= dataset_size
+    recall_score /= dataset_size
+
+    run['metrics/train/iou_score'].log(iou_score)
+    run['metrics/train/f1_score'].log(f1_score)
+    run['metrics/train/precision'].log(precision_score)
+    run['metrics/train/recall'].log(recall_score)
+
+    print('IOU Score: {} | F1 Score: {} | Precision Score: {} | Recall Score: {}'.format(iou_score, f1_score, precision_score, recall_score))
+    model.train()
+
+def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run):
+    """ Custom training loop for models
+
+    :loader: dataloader object
+    :model: model to train
+    :optimizer: training optimizer
+    :loss_fn: loss function
+    :scaler: scaler object
+    :returns:
+
+    """
     loop = tqdm(loader)  # just a nice library to keep track of loops
-    # ===========================================================================
-    model = model.to(device)
+    model = model.to(device)# ===========================================================================
     for batch_idx, (data, targets) in enumerate(loop):  # iterate through dataset
         data = data.to(device=device).float()
         targets = targets.to(device=device).float()
@@ -250,12 +310,12 @@ def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         scaler.update()
         # loss_values.append(loss.item())
         run['training/batch/loss'].log(loss)
-        ll.set_ll(loss.item())
 
         #update loop
         loop.set_postfix(loss=loss.item())
 
-def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+
+def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run):
     """ Custom training loop for models
 
     :loader: dataloader object
@@ -277,7 +337,7 @@ def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
 
         # forward
         with torch.cuda.amp.autocast():
-            predictions = model(data.contiguous())
+            predictions = model(data)
             loss = loss_fn(predictions, targets)
 
         # backward
@@ -287,7 +347,6 @@ def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         scaler.update()
 
         run['training/batch/loss'].log(loss)
-        ll.set_ll(loss.item())
 
         # update loop
         loop.set_postfix(loss=loss.item())
@@ -387,11 +446,11 @@ def save_predictions_as_imgs(loader,
             y = y.to(device).unsqueeze(1)
             y = y.to(torch.int64)
             # ===========================================================================
-            x = x.permute(0, 3, 1, 2)
+            x = x.permute(0, 1, 3, 2)
             #x = x.permute(0, 2, 3, 1)
 
             # get pixel predictions from image tensor
-            preds = model(x.float().contiguous())
+            preds = model(x.float())
             # get maximum values of tensor along dimension 1
             preds = torch.argmax(preds, dim=1).unsqueeze(1).int()
 
@@ -441,8 +500,8 @@ def save_predictions_as_imgs(loader,
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.jpg', rescaled, cmap=cmp)
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', rescaled2, cmap=cmp)
 
-    xut = y_pred.squeeze()
-    xutrue = y_true.squeeze()
+    xut = y_pred
+    xutrue = y_true
 
     ax = plt.axes()
 
@@ -491,8 +550,6 @@ def main():
 
     args = parser.parse_args()
 
-    last_loss = LastLoss()
-
     run = neptune.init(
         project="PhD-Research/coastal-segmentation",
         source_files=['./*.ipynb', './*.py'],
@@ -510,6 +567,7 @@ def main():
     MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/model/'
 
     loss = smp.losses.DiceLoss(mode='multiclass')
+    loss.__name__ = 'Dice_loss'
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -538,45 +596,47 @@ def main():
     """
     Training and testing image transforms using albumentation libraries
     """
-    test_transform = A.Compose(
-        [
-            A.Resize(32, 512),
-        ]
+    test_transform = A.Compose(        
+            [
+                A.PadIfNeeded(
+                    min_height=args.minheight, 
+                    min_width=args.minwidth, 
+                    border_mode=4
+                    ),
+                A.Resize(args.minheight, args.minwidth),
+            ]
     )
 
     train_transform = A.Compose(
         [
-            A.PadIfNeeded(min_height=args.minheight, min_width=args.minwidth, border_mode=4),
+            A.PadIfNeeded(
+                min_height=args.minheight, 
+                min_width=args.minwidth, 
+                border_mode=4
+                ),
             A.Resize(args.minheight, args.minwidth),
-            A.RandomBrightnessContrast(
-                brightness_limit=0.3, contrast_limit=0.3, p=0.5),
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.5),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.MedianBlur(blur_limit=3, always_apply=False, p=0.1),
-            A.ShiftScaleRotate(
-                shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.5),
-            A.ColorJitter(brightness=0.2, contrast=0.2,
-                          saturation=0.2, hue=0.2, always_apply=False, p=0.5),
-            A.Downscale(scale_min=0.25, scale_max=0.25,
-                        interpolation=0, always_apply=False, p=0.5),
-            A.Emboss(alpha=(0.2, 0.5), strength=(
-                0.2, 0.7), always_apply=False, p=0.5),
         ]
     )
 
     val_transform = A.Compose(  # validation image transforms
-        [A.Resize(256, 256)]
+        [
+            A.Resize(256, 256), ToTensorV2()
+        ]
     )
 
     trainDL, testDL = get_loaders(TRAIN_IMG_DIR, TRAIN_MASK_DIR,
                                   TEST_IMG_DIR, TEST_MASK_DIR,
                                   args.batchsize, train_transform,
-                                  test_transform, num_workers=args.numworkers, pin_memory=True, is_validation2=False)
+                                  test_transform, num_workers=args.numworkers, pin_memory=True)
 
     valDL, valDL2 = get_loaders(VAL_IMG_DIR, VAL_MASK_DIR,
                                 VAL_IMG_DIR, VAL_MASK_DIR,
                                 args.valbatchsize, val_transform,
-                                val_transform, num_workers=args.numworkers, pin_memory=True, is_validation2=True)
+                                val_transform, num_workers=args.numworkers, pin_memory=True)
 
     if args.model == 'unet':
         print('starting unet')
@@ -584,7 +644,7 @@ def main():
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=args.classes,
+            classes=6,
             activation=None,
         ).to(DEVICE)
     elif args.model == 'wavelet-unet':
@@ -596,7 +656,7 @@ def main():
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=args.classes,
+            classes=6,
             activation=None,
         ).to(DEVICE)
     elif args.model == 'pspnet':
@@ -638,23 +698,24 @@ def main():
     if torch.cuda.is_available():
         scaler = torch.cuda.amp.GradScaler()
 
-    # scheduler = StepLR(optimizer=optimizer,
-    #                 step_size=args.stepsize, gamma=args.gamma)
+    scheduler = StepLR(optimizer=optimizer,
+                    step_size=args.stepsize, gamma=args.gamma)
 
     for epoch in range(args.epochs):  # run training and accuracy functions and save model
         run['parameters/epochs'].log(epoch)
         if torch.cuda.is_available():
             if args.model == 'wavelet-unet':
                 print('training wavelet')
-                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run)
             else:
                 print('training baseline')
-                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run)
         else:
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         
-        check_accuracy(args.model, testDL, model, run, DEVICE)
-        # scheduler.step()
+        check_accuracy(run, testDL, model, DEVICE,)
+        # check_accuracy2(args.model, testDL, model, run, DEVICE)
+        scheduler.step()
 
         if epoch % 20 == 0:
             torch.save({
@@ -664,15 +725,15 @@ def main():
             }, '{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
 
             run["model_checkpoints/epoch{}".format(epoch)].upload('{}multi_class_{}.pt'.format(MODEL_SAVE_DIR, args.model))
-            save_predictions_as_imgs(
-                testDL,
-                model,
-                run,
-                folder=IMG_SAVE_DIR,
-                model_name=args.model,
-                device=DEVICE,
-                is_validation=False
-            )
+            # save_predictions_as_imgs(
+            #     testDL,
+            #     model,
+            #     run,
+            #     folder=IMG_SAVE_DIR,
+            #     model_name=args.model,
+            #     device=DEVICE,
+            #     is_validation=False
+            # )
 
             save_predictions_as_imgs(
                 valDL2,
