@@ -1,3 +1,12 @@
+"""
+Software Citations:
+
+Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta,and Masanori Koyama. 2019.
+Optuna: A Next-generation Hyperparameter Optimization Framework. In KDD.
+
+https://github.com/qubvel/segmentation_models.pytorch
+"""
+
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -180,7 +189,14 @@ def get_loaders(
 
     return train_loader, val_loader
 
-def check_accuracy(run, loader, model, lossFn, device='cpu'):
+def check_accuracy(
+    run, 
+    loader, 
+    model, 
+    lossFn, 
+    device='cpu', 
+    is_validation=False
+    ):
     """ Custom method to calculate accuracy of testing data
     :loader: dataloader objects
     :model: model to test
@@ -196,6 +212,12 @@ def check_accuracy(run, loader, model, lossFn, device='cpu'):
     y_pred = []
     y_true = []
     loss_total = 0
+    val_or_test = ''
+
+    if is_validation:
+        val_or_test = 'val'
+    else:
+        val_or_test = 'test'
 
     model.eval() # set model for evaluation
     with torch.no_grad():  # do not calculate gradients
@@ -231,15 +253,16 @@ def check_accuracy(run, loader, model, lossFn, device='cpu'):
     f1_score /= dataset_size
     precision_score /= dataset_size
     recall_score /= dataset_size
+    final_loss /= len(loader)
 
-    run['metrics/train/iou_score'].log(iou_score)
-    run['metrics/train/f1_score'].log(f1_score)
-    run['metrics/train/precision'].log(precision_score)
-    run['metrics/train/recall'].log(recall_score)
+    run[f'metrics/{val_or_test}/iou_score'].log(iou_score)
+    run[f'metrics/{val_or_test}/f1_score'].log(f1_score)
+    run[f'metrics/{val_or_test}/precision'].log(precision_score)
+    run[f'metrics/{val_or_test}/recall'].log(recall_score)
 
     model.train()
 
-    return loss_total / len(loader)
+    return final_loss, iou_score, f1_score, precision_score, recall_score
 
 def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run):
     """ Custom training loop for models
@@ -370,26 +393,21 @@ def save_predictions_as_imgs(loader,
                              device='cpu',
                              is_validation=False,
                              ):
-    """TODO: Docstring for save_predictions_as_imgs.
-    :loader: TODO
-    :model: TODO
-    :folder: TODO
-    :device: TODO
-    :returns: TODO
+    """
+    method to save predictions as images
+
+    :loader: data loader object with shoreline image and mask
+    :model: model to use for prediction
+    :folder: folder to save images
+    :device: one of 'cpu' or 'gpu'
+    :returns: none
     """
 
     # define scores to track
     y_pred = []
     y_true = []
-    # y_pred_tensor = torch.Tensor().cuda()
-    # y_true_tensor = torch.Tensor().cuda()
     
     colors = [(0, 0, 255/255), (225/255, 0, 225/255), (255/255, 0, 0), (255/255, 225/255, 225/255), (255/255, 255/255, 0)]
-    dataset_size = len(loader.dataset)  # number of images in the dataloader
-    f1_score = 0
-    precision_score = 0
-    recall_score = 0
-    iou_score = 0
 
     confmat = ConfusionMatrix(num_classes=6, normalize='true')
     CLASSES = ['background', 'ocean', 'wetsand',
@@ -416,37 +434,12 @@ def save_predictions_as_imgs(loader,
             # get maximum values of tensor along dimension 1
             preds = torch.argmax(preds, dim=1).unsqueeze(1).int()
 
-            #print(preds.shape, y.shape)
-            tp, fp, fn, tn = smpmetrics.get_stats(
-                preds, y, mode='multiclass', num_classes=6)  # get tp,fp,fn,tn from predictions
-
-            # compute metric
-            a = smpmetrics.iou_score(tp, fp, fn, tn, reduction="macro")
-            b = smpmetrics.f1_score(tp, fp, fn, tn, reduction='macro')
-            c = smpmetrics.precision(tp, fp, fn, tn, reduction='macro')
-            d = smpmetrics.recall(tp, fp, fn, tn, reduction='macro')
-
-            iou_score += a
-            f1_score += b
-            precision_score += c
-            recall_score += d
-
             y_pred.append(preds)
             y_true.append(y)
 
-    iou_score /= dataset_size  # averaged score across all images in directory
-    f1_score /= dataset_size
-    precision_score /= dataset_size
-    recall_score /= dataset_size
-
-    run[f'metrics/{val_or_test}/iou_score'].log(iou_score)
-    run[f'metrics/{val_or_test}/f1_score'].log(f1_score)
-    run[f'metrics/{val_or_test}/precision'].log(precision_score)
-    run[f'metrics/{val_or_test}/recall'].log(recall_score)
-
-    cmp = ListedColormap(colors=colors)
-    y_true = torch.cat(y_true, dim=2)
-
+    cmp = ListedColormap(colors=colors)  # this makes the predictions the same color as the original mask image
+    
+    y_true = torch.cat(y_true, dim=2)  # concat the list of tensors along dimension 2
     y_pred = torch.cat(y_pred, dim=2)
 
     fop = y_true.squeeze().cpu().numpy()
@@ -455,13 +448,11 @@ def save_predictions_as_imgs(loader,
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.jpg', fop, format='png',cmap=cmp)
     matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, format='png',cmap=cmp)
     plt.close()
-    xut = y_pred
-    xutrue = y_true
 
     ax = plt.axes()
 
     confmat = ConfusionMatrix(num_classes=6, normalize='true')
-    df_cm = confmat(xut.cpu(), xutrue.cpu())
+    df_cm = confmat(y_pred.cpu(), y_true.cpu())
     df_cm = pd.DataFrame(df_cm.numpy())
 
     sn.set(font_scale=0.7)
@@ -523,7 +514,7 @@ def main():
 
     run = neptune.init(
         project="PhD-Research/coastal-segmentation",
-        source_files=['./*.ipynb', './*.py'],
+        source_files=['./*.py'],
         api_token=config.NEPTUNE_API_TOKEN,
     )
 
@@ -539,6 +530,15 @@ def main():
     IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/images/'
     VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/val_images/'
     MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/model/'
+
+    # =============================================================================
+    # ============================ Best Scores ====================================
+    # =============================================================================
+    best_final_loss = 0
+    best_iou_score = 0
+    best_f1_score = 0
+    best_precision_score = 0
+    best_recall_score = 0
 
     # =============================================================================
     # ====================== Log Neptune Metrics ==================================
@@ -561,6 +561,7 @@ def main():
     # =============================================================================
     run['parameters/loss/loss_name'].log(args.loss)
     torch.manual_seed(23)
+    run['parameters/seed'].log(23)
 
     if args.loss == 'Dice':
         loss = smp.losses.DiceLoss(mode='multiclass')
@@ -732,16 +733,20 @@ def main():
         else:
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         
-        m = check_accuracy(run, testDL, model, loss, DEVICE)
+        check_accuracy(run, testDL, model, loss, DEVICE, is_validation=False)
+        m, iou, f1, prec, rec = check_accuracy(run, valDL2, model, loss, DEVICE, is_validation=True)
 
-        if epoch % 20 == 0:
+        if f1 > best_f1_score:  # save best model
+            best_f1_score = f1
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
             }, '{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
 
-            run["model_checkpoints/epoch{}".format(epoch)].upload('{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+            run["model_checkpoints/best_model"].upload('{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+            
+            # test
             save_predictions_as_imgs(
                 testDL,
                 model,
@@ -752,6 +757,7 @@ def main():
                 is_validation=False
             )
 
+            # validation
             save_predictions_as_imgs(
                 valDL2,
                 model,
@@ -762,14 +768,14 @@ def main():
                 is_validation=True,
             )
 
-            binary_result_paths = get_files(IMG_SAVE_DIR)
-            binary_val_paths = get_files(VAL_IMG_SAVE_DIR)
+            result_paths = get_files(IMG_SAVE_DIR)
+            val_paths = get_files(VAL_IMG_SAVE_DIR)
 
-            for image_path in binary_result_paths:
-                       run["train/results/epoch{}".format(epoch)].log(File(image_path))
+            for image_path in result_paths:
+                       run["images/test/best"].log(File(image_path))
 
-            for image_path2 in binary_val_paths:
-                       run["train/validation/epoch{}".format(epoch)].log(File(image_path2))
+            for image_path2 in val_paths:
+                       run["images/validation/best"].log(File(image_path2))
             
         if args.scheduler == 'reducelronplataeu':
             scheduler.step(m)

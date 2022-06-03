@@ -205,7 +205,7 @@ def save_predictions_as_imgs(val_or_test, metrics, loader, model, run, folder, d
 
     model.train()
 
-def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run):
     """
     Trains the wavelet-unet model
 
@@ -241,7 +241,7 @@ def train_wavelet(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         loop.set_postfix(loss=loss.item())
         del loss, predictions
 
-def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run, ll):
+def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run):
     """
     Trains the baseline models
 
@@ -271,7 +271,6 @@ def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run, ll):
         scaler.update()
 
         run['metrics/train/loss'].log(loss.item())
-        ll.set_ll(loss.item())
 
         # update loop
     
@@ -358,7 +357,6 @@ def main():
     loss = smp.losses.DiceLoss(mode='binary')
     LOSS_STR = 'Dice Loss'
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    last_loss = LastLoss()
 
     OPTIM_NAME = 'AdamW'
 
@@ -506,10 +504,10 @@ def main():
         if torch.cuda.is_available():
             if args.model == 'wavelet-unet':
                 print('training wavelet')
-                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+                train_wavelet(trainDL, model, optimizer, loss, scaler, DEVICE, run)
             else:
                 print('training baseline')
-                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run, last_loss)
+                train_baseline(trainDL, model, optimizer, loss, scaler, DEVICE, run)
         else:
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         
