@@ -9,6 +9,8 @@ binary-model.e*
 binary-model.o*
 multi-class-model.e*
 multi-class-model.o*
+hyper-parameter-optim.e*
+hyper-parameter-optim.o*
 models/saved_images/*
 drone_images/*
 results/*
