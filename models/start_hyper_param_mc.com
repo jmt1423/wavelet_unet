@@ -13,7 +13,7 @@ module add cuda/11.2v2
 source activate $global_storage/conda_environments/py3.8-coastal-segmentation
 
 NOW=$(date +%Y%m%d_%H%M%S)
-MODEL="wavelet-unet"
+MODEL="unet"
 EXPERIMENT="$NOW"
 TRAIN_IMG_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/train/"
 TRAIN_MASK_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/trainannot/"
@@ -23,8 +23,8 @@ VAL_IMG_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/val2
 VAL_MASK_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/valannot3/"
 
 # image parameters
-MINHEIGHT=256
-MINWIDTH=256
+MINHEIGHT=32
+MINWIDTH=512
 
 # pretrained encoder weights
 ENCODER="resnet18"

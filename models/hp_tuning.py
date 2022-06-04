@@ -535,7 +535,7 @@ def get_scheduler(optimizer,
                   rop_epsilon: float = 1e-8, 
                   rop_factor: float = 1,
                   rop_threshold: float = 1e-4,
-                  rop_threshoold_mode: str = "rel"
+                  rop_threshold_mode: str = "rel"
                   ):
     """
     Get the scheduler for the optimizer
@@ -546,7 +546,7 @@ def get_scheduler(optimizer,
     :param rop_epsilon: epsilon for reducelronplataeu
     :param rop_factor: factor for reducelronplataeu
     :param rop_threshold: threshold for reducelronplataeu
-    :param rop_threshoold_mode: mode for reducelronplataeu
+    :param rop_threshold_mode: mode for reducelronplataeu
     :returns: scheduler
     """
     
@@ -557,16 +557,16 @@ def get_scheduler(optimizer,
     elif scheduler_name == 'reducelronplataeu':
         scheduler = ReduceLROnPlateau(
             optimizer=optimizer, 
-            mode=rop_threshoold_mode, 
-            factor=rop_factor, 
-            patience=patience, 
-            threshold_mode=args.roptmode, 
-            cooldown=args.ropcooldown, 
+            mode="min", 
+            factor=rop_factor,
+            patience=patience,
             threshold=rop_threshold,
+            threshold_mode=rop_threshold_mode, 
+            cooldown=args.ropcooldown, 
             eps=rop_epsilon)
         run['parameters/scheduler/mode'].log(args.ropmode)
         run['parameters/scheduler/factor'].log(rop_factor)
-        run['parameters/scheduler/threshold_mode'].log(rop_threshoold_mode)
+        run['parameters/scheduler/threshold_mode'].log(rop_threshold_mode)
         run['parameters/scheduler/cooldown'].log(args.ropcooldown)
         run['parameters/scheduler/threshold'].log(rop_threshold)
         run['parameters/scheduler/eps'].log(rop_epsilon)
@@ -707,11 +707,8 @@ def objective(trial):
     :return: loss, iou, f1, precision, recall
     """
     params = {
-        # "model_name": trial.suggest_categorical('model_name',["wavelet-unet"]),
-        # "loss_name": trial.suggest_categorical('loss_name',["SCE", "Dice", "Tversky"]),
-        # "scheduler_name": trial.suggest_categorical('scheduler_name',["steplr", "reducelronplataeu"]),
-        "lr": trial.suggest_float('lr', 1e-6, 1e-2),
-        "optimizer_name": trial.suggest_categorical('optimizer_name',["Adam_beta", "AdamW_beta"]),
+        "lr": trial.suggest_float("lr", 1e-6, 1e-2),
+        "optimizer_name": trial.suggest_categorical("optimizer_name",["Adam_beta", "AdamW_beta"]),
         "patience": trial.suggest_int("patience", 2, 10),
         "optim_epsilon": trial.suggest_float("optim_epsilon", 1e-8, 1e-2),
         "rop_epsilon": trial.suggest_float("rop_epsilon", 1e-8, 1e-3),
@@ -721,25 +718,25 @@ def objective(trial):
         "beta1": trial.suggest_float("beta1", 0.6, 0.99),
     }
 
-    model = get_model("wavelet-unet")
+    model1 = get_model("unet")
 
-    optimizer = get_optimizer(model, 
+    optimizer1 = get_optimizer(model1, 
                               optimizer_name=params["optimizer_name"],
                               optim_epsilon=params["optim_epsilon"], 
                               lr=params["lr"],
                               beta1=params["beta1"])
-    scheduler = get_scheduler(optimizer, 
+    scheduler1 = get_scheduler(optimizer1, 
                               "reducelronplataeu", 
                               patience=params["patience"], 
                               rop_epsilon=params["rop_epsilon"], 
                               rop_factor=params["rop_factor"],
                               rop_threshold=params["rop_threshold"], 
                               rop_threshold_mode=params["rop_threshold_mode"])
-    loss = get_loss("Dice")
+    loss1 = get_loss("Dice")
 
-    m, iou, f1, prec, rec = train_and_evaluate(model, optimizer, loss, scheduler)
+    m, iou, f1, prec, rec = train_and_evaluate(model1, optimizer1, loss1, scheduler1)
 
-    return m, iou, f1, prec, rec
+    return f1
 
 def main():
     run['parameters/model/encoder'].log(args.encoder)
@@ -768,7 +765,7 @@ def main():
         sampler=sampler,
         pruner=optuna.pruners.MedianPruner(
             n_startup_trials=2, n_warmup_steps=5, interval_steps=3
-        ),directions=['minimize', 'maximize', 'maximize', 'maximize', 'maximize'])
+        ),directions=['maximize'])
     study.optimize(func=objective, n_trials=args.trials, callbacks=[neptune_callback])
 
 if __name__ == '__main__':
