@@ -308,15 +308,18 @@ def check_accuracy(
     """
 
     # define scores to track
-    f1_score = 0
-    precision_score = 0
-    recall_score = 0
-    iou_score = 0
+    f1_score=0
+    precision_score=0
+    recall_score=0
+    iou_score=0
+    balanced_accuracy=0
+    fbeta_score=0
+    false_negative_rate=0
     dataset_size = len(loader.dataset)  # number of images in the dataloader
-    y_pred = []
-    y_true = []
-    loss_total = 0
-    val_or_test = ''
+    y_pred=[]
+    y_true=[]
+    loss_total=0
+    val_or_test=''
 
     if is_validation:
         val_or_test = 'val'
@@ -350,26 +353,38 @@ def check_accuracy(
             b = smpmetrics.f1_score(tp,fp,fn,tn, reduction='micro-imagewise')
             c = smpmetrics.precision(tp,fp,fn,tn, reduction='micro-imagewise')
             d = smpmetrics.recall(tp,fp,fn,tn, reduction='micro-imagewise')
+            e = smpmetrics.balanced_accuracy(tp,fp,fn,tn, reduction='micro-imagewise')
+            f = smpmetrics.fbeta_score(tp,fp,fn,tn, beta=3, reduction='micro-imagewise')
+            g = smpmetrics.false_negative_rate(tp,fp,fn,tn, reduction='macro')
 
             iou_score += a
             f1_score += b
             precision_score += c
             recall_score += d
+            balanced_accuracy += e
+            fbeta_score += f
+            false_negative_rate += g
 
     iou_score /= dataset_size  # averaged score across all images in directory
     f1_score /= dataset_size
     precision_score /= dataset_size
     recall_score /= dataset_size
+    balanced_accuracy /= dataset_size
+    fbeta_score /= dataset_size
+    false_negative_rate /= dataset_size
     final_loss = loss_total/len(loader)
 
     run[f'metrics/{val_or_test}/iou_score'].log(iou_score)
     run[f'metrics/{val_or_test}/f1_score'].log(f1_score)
     run[f'metrics/{val_or_test}/precision'].log(precision_score)
     run[f'metrics/{val_or_test}/recall'].log(recall_score)
+    run[f'metrics/{val_or_test}/balanced_accuracy'].log(balanced_accuracy)
+    run[f'metrics/{val_or_test}/fbeta_score'].log(fbeta_score)
+    run[f'metrics/{val_or_test}/false_negative_rate'].log(false_negative_rate)
 
     model.train()
 
-    return final_loss, iou_score, f1_score, precision_score, recall_score
+    return final_loss, iou_score, f1_score, precision_score, recall_score, balanced_accuracy, fbeta_score, false_negative_rate
 
 def save_predictions_as_imgs(loader,
                              model,
@@ -906,14 +921,14 @@ def train_and_evaluate(model, valDL2,optimizer, loss, scheduler, batchsize, augm
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         
         # check_accuracy(run, testDL, model, loss, DEVICE, is_validation=False)
-        lossv, iou, f1, prec, rec = check_accuracy(run, valDL2, model, loss, DEVICE, is_validation=True)
+        lossv, iou, f1, prec, rec, b_acc, fbeta, fnr = check_accuracy(run, valDL2, model, loss, DEVICE, is_validation=True)
             
         if args.scheduler == 'reducelronplataeu':
             scheduler.step(lossv)
         else: 
             scheduler.step()
         
-    return lossv, iou, f1, prec, rec, model, optimizer
+    return lossv, iou, f1, prec, rec, b_acc, fbeta, fnr, model, optimizer
 
 def objective(trial):
     """
@@ -966,12 +981,15 @@ def objective(trial):
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True)
     
-    lossv, iou, f1, prec, rec, model, optimizer = train_and_evaluate(model1, valDL2, optimizer1, loss1, scheduler1, params["batchsize"], params["augment"])
+    lossv, iou, f1, prec, rec, b_acc, fbeta, fnr, model, optimizer = train_and_evaluate(model1, valDL2, optimizer1, loss1, scheduler1, params["batchsize"], params["augment"])
     
     run['scores/final/f1'].log(f1)
     run['scores/final/precision'].log(prec)
     run['scores/final/recall'].log(rec)
     run['scores/final/iou'].log(iou)
+    run['scores/final/balanced_accuracy'].log(b_acc)
+    run['scores/final/fbeta'].log(fbeta)
+    run['scores/final/fpr'].log(fnr)
     run['scores/final/loss'].log(lossv)
 
     if f1 > top_score:

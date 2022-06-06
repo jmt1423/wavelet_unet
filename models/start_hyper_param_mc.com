@@ -13,7 +13,7 @@ module add cuda/11.2v2
 source activate $global_storage/conda_environments/py3.8-coastal-segmentation
 
 NOW=$(date +%Y%m%d_%H%M%S)
-MODEL="manet"
+MODEL="pspnet"
 EXPERIMENT="$NOW"
 TRAIN_IMG_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/train/"
 TRAIN_MASK_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/trainannot/"
