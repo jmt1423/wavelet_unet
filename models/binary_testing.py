@@ -519,7 +519,6 @@ def main():
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'loss': last_loss.get_ll(),
             }, '{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
 
             run["model_checkpoints/epoch{}".format(epoch)].upload('{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))

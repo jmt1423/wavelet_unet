@@ -1,7 +1,7 @@
 """
 This file contains code for hyperparameter optimization using neptune, pytorch, and optuna.
 
-Multiclass semantic segmentation
+Binary semantic segmentation
 
 Models used:
  - unet
@@ -12,12 +12,8 @@ Models used:
  - manet
  
  Classes:
- - 0: background
+ - 0: not ocean
  - 1: ocean
- - 2: wetsand
- - 3 : buildings
- - 4 : vegetation
- - 5 : drysand
 
 Software Citations:
 
@@ -136,9 +132,9 @@ TEST_IMG_DIR = args.testimgdir
 TEST_MASK_DIR = args.testmaskdir
 VAL_IMG_DIR = args.valimgdir
 VAL_MASK_DIR = args.valmaskdir
-MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/model/'
-IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/images/'
-VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/multiclass/experiments/{args.experiment}/val_images/'
+IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/images/'
+VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/val_images/'
+MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/model/'
 
 run = neptune.init(
     project="PhD-Research/coastal-segmentation",
@@ -156,81 +152,40 @@ top_score = 0
 
 class Dataset(Dataset):
     """This method creates the dataset from given directories"""
-    def __init__(self, iv, image_dir, mask_dir, transform=None):
+
+    def __init__(self, image_dir, mask_dir, transform=None):
         """initialize directories
-
-        :image_dir: image directory
-        :mask_dir: mask directory
-        :transform: transforms to be applied to the images
-
+        :image_dir: TODO
+        :mask_dir: TODO
+        :transform: TODO
         """
         self._image_dir = image_dir
         self._mask_dir = mask_dir
         self._transform = transform
         self.images = os.listdir(image_dir)
-        self.iv = iv
-
-        self.mapping = {(0, 0, 0): 0, # background class (black)
-                        (0, 0, 255): 1,  # 0 = class 1
-                        (225, 0, 225): 2,  # 1 = class 2
-                        (255, 0, 0): 3,  # 2 = class 3
-                        (255, 225, 225): 4, # 3 = class 4
-                        (255, 255, 0): 5}  # 4 = class 5
 
     def __len__(self):
-        """
-        :returns: length of images
+        """returns length of images
+        :returns: TODO
         """
         return len(self.images)
-    
-    def mask_to_class_rgb(self, mask):
-        if self.iv:  # validation images are different sizes so the dataset mask creation must change accordingly
-            h=316
-            w=316
-        else:
-            h=20
-            w=722
-
-        mask = torch.from_numpy(mask)
-        mask = torch.squeeze(mask)  # remove 1
-
-        #print('unique values rgb    ', torch.unique(mask)) 
-
-        class_mask = mask
-        class_mask = class_mask.permute(2, 0, 1).contiguous()
-        h, w = class_mask.shape[1], class_mask.shape[2]
-        mask_out = torch.zeros(h, w, dtype=torch.long)
-
-        for k in self.mapping:
-            idx = (class_mask == torch.tensor(k, dtype=torch.uint8).unsqueeze(1).unsqueeze(2))         
-            validx = (idx.sum(0) == 3)          
-            mask_out[validx] = torch.tensor(self.mapping[k], dtype=torch.long)
-
-        #print('unique values mapped ', torch.unique(mask_out))
-        # -> unique values mapped  tensor([0, 1, 2, 3])
-       
-        return mask_out
 
     def __getitem__(self, index):
         """TODO: Docstring for __getitem__.
         :returns: TODO
-
         """
         img_path = os.path.join(self._image_dir, self.images[index])
         mask_path = os.path.join(self._mask_dir, self.images[index])
         image = np.array(Image.open(img_path).convert("RGB"))
-        mask = np.array(Image.open(mask_path).convert("RGB"))
-        mask = self.mask_to_class_rgb(mask).cpu().detach().numpy()
-
+        mask = np.array(Image.open(mask_path).convert("L"), dtype=np.float32)
+        mask[mask == 255.0] = 1
 
         if self._transform is not None:
             augmentations = self._transform(image=image, mask=mask)
             image = augmentations["image"]
             mask = augmentations["mask"]
-            
 
         return image, mask
-
 
 def get_loaders(
     iv,
@@ -340,16 +295,13 @@ def check_accuracy(
 
 
             #print(preds.shape, y.shape)
-            tp, fp, fn, tn = smpmetrics.get_stats(preds, y, mode='multiclass', num_classes=6)  # get tp,fp,fn,tn from predictions
+            tp, fp, fn, tn = smpmetrics.get_stats(preds, y, mode='binary')  # get tp,fp,fn,tn from predictions
 
-            # metrics
-            # micro-imagewise:
-            # Sum true positive, false positive, false negative and true negative pixels for each image, then compute score for each image and average scores over dataset. All images contribute equally to final score, however takes into accout class imbalance for each image.
-            # https://smp.readthedocs.io/en/latest/metrics.html
-            a = smpmetrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
-            b = smpmetrics.f1_score(tp,fp,fn,tn, reduction='micro-imagewise')
-            c = smpmetrics.precision(tp,fp,fn,tn, reduction='micro-imagewise')
-            d = smpmetrics.recall(tp,fp,fn,tn, reduction='micro-imagewise')
+            # compute metric
+            a = smpmetrics.iou_score(tp, fp, fn, tn, reduction="weighted")
+            b = smpmetrics.f1_score(tp,fp,fn,tn, reduction='weighted')
+            c = smpmetrics.precision(tp,fp,fn,tn, reduction='weighted')
+            d = smpmetrics.recall(tp,fp,fn,tn, reduction='weighted')
 
             iou_score += a
             f1_score += b
@@ -592,14 +544,14 @@ def get_loss(loss_name: str = "Dice", loss_eps: float = 1e-7):
     :param loss_name: loss function name
     """
     if loss_name == 'Dice':
-        loss = smp.losses.DiceLoss(mode='multiclass', eps=loss_eps)
+        loss = smp.losses.DiceLoss(mode='binary', eps=loss_eps)
     elif loss_name == 'SCE':
         loss = smp.losses.SoftCrossEntropyLoss(reduction=args.scereduction, smooth_factor=args.scesmooth)
         run['parameters/loss/reduction'].log(args.scereduction)
         run['parameters/loss/smooth_factor'].log(args.scesmooth)
     elif loss_name == 'Tversky':
         loss = smp.losses.TverskyLoss(
-            mode='multiclass', 
+            mode='binary', 
             log_loss=False,)
         # run['parameters/loss/epsilon'].log(args.epstversky)
         # run['parameters/loss/alpha'].log(args.alphatversky)
@@ -877,15 +829,7 @@ def train_and_evaluate(model, valDL2,optimizer, loss, scheduler, batchsize, augm
                 A.MedianBlur(
                     blur_limit=3, 
                     always_apply=False, 
-                    p=0.1), 
-                A.Superpixels(
-                    p_replace=0.3, 
-                    n_segments=100, 
-                    max_size=256, 
-                    interpolation=1, 
-                    always_apply=False, 
-                    p=0.5),
-                ToTensorV2()
+                    p=0.1), ToTensorV2()
             ]
         )
     # ─── DATA LOADERS ───────────────────────────────────────────────────────────────
@@ -979,9 +923,9 @@ def objective(trial):
         torch.save({
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                }, '{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+                }, '{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
     
-        run[f"model_checkpoints/bestmodel"].upload('{}multiclass_{}.pt'.format(MODEL_SAVE_DIR, args.model))
+        run[f"model_checkpoints/bestmodel"].upload('{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
         
         # validation
         save_predictions_as_imgs(

@@ -25,10 +25,10 @@ class DwtPyramidBlock(nn.Module):
         self.og_size_list = og_size_list
 
         self.dwtList = []
-        if torch.cuda.is_available():
-            self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
-        else:
-            self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode)
+        # if torch.cuda.is_available():
+        self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
+        # else:
+        #     self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode)
 
     def forward(self, x):
         """
@@ -180,11 +180,10 @@ class UNET(nn.Module):
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        if torch.cuda.is_available():
-            # initialize wavelet transforms for use in forward
-            self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
-        else:
-            self.dwtF = DWTForward(J=3, mode='zero', wave='haar')
+        
+        self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
+        # else:
+        #     self.dwtF = DWTForward(J=3, mode='zero', wave='haar')
 
         self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave='haar', depth=0, og_size_list=[0, 0, 16, 16])
 
