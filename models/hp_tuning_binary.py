@@ -26,15 +26,11 @@ https://github.com/qubvel/segmentation_models.pytorch
 import numpy as np
 from matplotlib import pyplot as plt
 import os
-import matplotlib
-import pandas as pd
-import seaborn as sn
-from torchmetrics import ConfusionMatrix
-from matplotlib.colors import ListedColormap
+import torchvision
 from torch.optim.lr_scheduler import StepLR
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torch
-import torch.nn as nn
+from meter import AverageValueMeter
 import torch.optim as optim
 import os
 import argparse
@@ -136,9 +132,24 @@ IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{arg
 VAL_IMG_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/val_images/'
 MODEL_SAVE_DIR = f'/storage/hpc/27/thomann/model_results/coastal_segmentation/{args.model}/binary/experiments/{args.experiment}/model/'
 
+patience_low = args.patiencelow
+patience_high = args.patiencehigh
+rop_eps_low = args.ropepslow
+rop_eps_high = args.ropepshigh
+rop_factor_low = args.ropfactorlow
+rop_factor_high = args.ropfactorhigh
+rop_threshold_low = args.ropthreshlow
+rop_threshold_high = args.ropthreshhigh
+loss_eps_low = args.lossepslow
+loss_eps_high = args.lossepshigh
+batch_size_low = args.batchsizelow
+batch_size_high = args.batchsizehigh
+augment1 = args.augment1
+augment2 = args.augment2
+
 run = neptune.init(
     project="PhD-Research/coastal-segmentation",
-    source_files=['./*.py', 'start_hyper_param_mc.com'],
+    source_files=['./*.py', './*.com'],
     api_token=config.NEPTUNE_API_TOKEN,
 )
 
@@ -215,7 +226,7 @@ def get_loaders(
     :returns: training and validation dataloaders
     """
     
-    train_ds = Dataset(iv, image_dir=train_dir,
+    train_ds = Dataset(image_dir=train_dir,
                              mask_dir=train_mask_dir,
                              transform=train_transform)
     train_loader = DataLoader(
@@ -226,7 +237,7 @@ def get_loaders(
         shuffle=True,
     )
 
-    val_ds = Dataset(iv,
+    val_ds = Dataset(
         image_dir=val_dir,
         mask_dir=val_mask_dir,
         transform=val_transform,
@@ -247,7 +258,7 @@ def check_accuracy(
     loader, 
     model, 
     lossFn, 
-    device='cpu', 
+    device='cuda', 
     is_validation=False
     ):
     """ 
@@ -261,147 +272,111 @@ def check_accuracy(
     :is_validation: boolean to determine if the dataloader is validation or training
     :returns: accuracy and loss of the model
     """
-
     # define scores to track
-    f1_score = 0
-    precision_score = 0
-    recall_score = 0
-    iou_score = 0
+    metrics = [
+        smp.utils.metrics.IoU(threshold=0.5),
+        smp.utils.metrics.Precision(threshold=0.5),
+        smp.utils.metrics.Recall(threshold=0.5),
+        smp.utils.metrics.Fscore(threshold=0.5),
+    ]
+    
+    metrics_meters = {metric.__name__: AverageValueMeter()
+                      for metric in metrics}
+    
+    f1_score=0
+    precision_score=0
+    recall_score=0
+    iou_score=0
+    balanced_accuracy=0
+    fbeta_score=0
+    false_negative_rate=0
     dataset_size = len(loader.dataset)  # number of images in the dataloader
-    y_pred = []
-    y_true = []
-    loss_total = 0
-    val_or_test = ''
-
-    if is_validation:
-        val_or_test = 'val'
-    else:
-        val_or_test = 'test'
-
+    loss_total=0
+    
     model.eval() # set model for evaluation
     with torch.no_grad():  # do not calculate gradients
         for x, y in loader:
-            x = x.to(device)
+            x = x.to(device).float()
             y = y.to(device).unsqueeze(1)
-            y = y.to(torch.int64)
-            #x = x.permute(0,1,2,3) # ===========================================================================
-            x = x.permute(0,1,2,3)
-            preds = model(x.float().contiguous())  # get pixel predictions from image tensor
+            preds = torch.sigmoid(model(x))  # get pixel predictions from image tensor
             
             loss = lossFn(preds, y)
             loss_total += loss.item()
-
-            preds = torch.argmax(preds, dim=1).unsqueeze(1).int()  # get maximum values of tensor along dimension 1
-
+            
+            preds = (preds > 0.5).float()  # threshold predictions
+            
+            for metric_fn in metrics:
+                metric_value = metric_fn(preds, y).cpu().detach().numpy()
+                metrics_meters[metric_fn.__name__].add(metric_value)
+            metrics_logs = {k: v.mean for k, v in metrics_meters.items()}
 
             #print(preds.shape, y.shape)
-            tp, fp, fn, tn = smpmetrics.get_stats(preds, y, mode='binary')  # get tp,fp,fn,tn from predictions
+            tp, fp, fn, tn = smpmetrics.get_stats(preds.long(), y.long(), mode="binary", threshold=0.5)  # get tp,fp,fn,tn from predictions
 
-            # compute metric
-            a = smpmetrics.iou_score(tp, fp, fn, tn, reduction="weighted")
-            b = smpmetrics.f1_score(tp,fp,fn,tn, reduction='weighted')
-            c = smpmetrics.precision(tp,fp,fn,tn, reduction='weighted')
-            d = smpmetrics.recall(tp,fp,fn,tn, reduction='weighted')
+            # metrics
+            a = smpmetrics.iou_score(tp, fp, fn, tn)
+            b = smpmetrics.f1_score(tp,fp,fn,tn)
+            c = smpmetrics.precision(tp,fp,fn,tn)
+            d = smpmetrics.recall(tp,fp,fn,tn)
+            e = smpmetrics.balanced_accuracy(tp,fp,fn,tn)
+            f = smpmetrics.fbeta_score(tp,fp,fn,tn, beta=2)
+            g = smpmetrics.false_negative_rate(tp,fp,fn,tn)
 
             iou_score += a
             f1_score += b
             precision_score += c
             recall_score += d
+            balanced_accuracy += e
+            fbeta_score += f
+            false_negative_rate += g
 
     iou_score /= dataset_size  # averaged score across all images in directory
     f1_score /= dataset_size
     precision_score /= dataset_size
     recall_score /= dataset_size
+    balanced_accuracy /= dataset_size
+    fbeta_score /= dataset_size
+    false_negative_rate /= dataset_size
     final_loss = loss_total/len(loader)
-
-    run[f'metrics/{val_or_test}/iou_score'].log(iou_score)
-    run[f'metrics/{val_or_test}/f1_score'].log(f1_score)
-    run[f'metrics/{val_or_test}/precision'].log(precision_score)
-    run[f'metrics/{val_or_test}/recall'].log(recall_score)
 
     model.train()
 
-    return final_loss, iou_score, f1_score, precision_score, recall_score
+    return final_loss, iou_score, f1_score, precision_score, recall_score, balanced_accuracy, fbeta_score, false_negative_rate
 
-def save_predictions_as_imgs(loader,
-                             model,
-                             run,
-                             folder,
-                             model_name,
-                             device='cpu',
-                             is_validation=False,
-                             ):
+def save_predictions_as_imgs(loader, model, folder, device='cpu',):
     """
-    method to save predictions as images
+    Method that saves predictions to correct directory along with accuracy metrics of
+    each predicted image
 
-    :loader: data loader object with shoreline image and mask
-    :model: model to use for prediction
-    :folder: folder to save images
-    :device: one of 'cpu' or 'gpu'
-    :returns: none
+    :val_or_test: str object for saving in correct directory
+    :metrics: list of metrics to be calculated
+    :loader: dataloader object
+    :model: model to get predictions from
+    :folder: directory to save predictions
+    :device: cpu or gpu
+    :returns:
     """
+    model.eval()
+    gt_tensor = torch.Tensor().cuda()
+    preds_tensor = torch.Tensor().cuda()
 
-    # define scores to track
-    y_pred = []
-    y_true = []
-    
-    colors = [(0, 0, 255/255), (225/255, 0, 225/255), (255/255, 0, 0), (255/255, 225/255, 225/255), (255/255, 255/255, 0)]
-
-    confmat = ConfusionMatrix(num_classes=6, normalize='true')
-    CLASSES = ['background', 'ocean', 'wetsand',
-               'buildings', 'vegetation', 'drysand']
-    val_or_test = ''
-
-    if is_validation:  # just for saving files
-        val_or_test = 'val'
-    else:
-        val_or_test = 'test'
-
-    model.eval()  # set model for evaluation
-    with torch.no_grad():  # do not calculate gradients
-        for x, y in loader:
-            x = x.to(device)
+    with torch.no_grad():
+        for idx, (x, y) in enumerate(loader):
+            x = x.to(device).float()
             y = y.to(device).unsqueeze(1)
-            y = y.to(torch.int64)
-            # ===========================================================================
-            x = x.permute(0, 1, 2, 3)
-            #x = x.permute(0, 2, 3, 1)
+            preds = torch.sigmoid(model(x))
 
-            # get pixel predictions from image tensor
-            preds = model(x.float())
-            # get maximum values of tensor along dimension 1
-            preds = torch.argmax(preds, dim=1).unsqueeze(1).int()
+            preds = (preds > 0.5).float()
+            
+            gt_tensor = torch.cat((gt_tensor, y), 2)
+            preds_tensor = torch.cat((preds_tensor, preds), 2)
 
-            y_pred.append(preds)
-            y_true.append(y)
-
-    cmp = ListedColormap(colors=colors)  # this makes the predictions the same color as the original mask image
+    torchvision.utils.save_image(preds_tensor, f"{folder}pred.png")
+    torchvision.utils.save_image(gt_tensor, f"{folder}gt.png")
     
-    y_true = torch.cat(y_true, dim=2)  # concat the list of tensors along dimension 2
-    y_pred = torch.cat(y_pred, dim=2)
+    # log metrics into neptune
 
-    fop = y_true.squeeze().cpu().numpy()
-    fop2 = y_pred.squeeze().cpu().numpy()
-    
-    matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_gt.jpg', fop, format='png',cmap=cmp)
-    matplotlib.image.imsave(f'{folder}multiclass_{val_or_test}_preds.jpg', fop2, format='png',cmap=cmp)
-    plt.close()
-
-    ax = plt.axes()
-
-    confmat = ConfusionMatrix(num_classes=6, normalize='true')
-    df_cm = confmat(y_pred.cpu(), y_true.cpu())
-    df_cm = pd.DataFrame(df_cm.numpy())
-
-    sn.set(font_scale=0.7)
-    sn.heatmap(df_cm, annot=True, annot_kws={"size": 11})  # font size
-
-    ax.set_title('{} Confusion Matrix'.format(model_name))
-    ax.set_xticklabels(CLASSES, rotation=20)
-    ax.set_yticklabels(CLASSES, rotation=20)
-    plt.savefig(f'{folder}multiclass_{val_or_test}_heatmap.jpg',
-                dpi=200, bbox_inches="tight")
-    plt.close()
+    model.train()
 
 def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run):
     """ 
@@ -425,7 +400,6 @@ def train_baseline(loader, model, optimizer, loss_fn, scaler, device, run):
         targets = targets.to(device=device).float()
         targets = targets.unsqueeze(1)
         # data = data.permute(0,3,1,2)  # correct shape for image# ===========================================================================
-        targets = targets.to(torch.int64)
 
         # forward
         with torch.cuda.amp.autocast():
@@ -644,17 +618,17 @@ def get_model(model_name: str = "unet"):
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=6,
+            classes=1,
             activation=args.activation,
         ).to(DEVICE)
     elif model_name == 'wavelet-unet':
-        model = UNET(in_channels=3, out_channels=args.classes).to(DEVICE)
+        model = UNET(in_channels=3, out_channels=1).to(DEVICE)
     elif model_name == 'manet':
         model = smp.MAnet(
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=6,
+            classes=1,
             activation=args.activation,
         ).to(DEVICE)
     elif model_name == 'pspnet':
@@ -662,7 +636,7 @@ def get_model(model_name: str = "unet"):
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=args.classes,
+            classes=1,
             activation=args.activation,
         ).to(DEVICE)
     elif model_name == 'fpn':
@@ -670,7 +644,7 @@ def get_model(model_name: str = "unet"):
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=args.classes,
+            classes=1,
             activation=args.activation,
         ).to(DEVICE)
     elif model_name == 'unetpp':
@@ -678,7 +652,7 @@ def get_model(model_name: str = "unet"):
             encoder_name=args.encoder,
             encoder_weights=args.encoderweights,
             in_channels=3,
-            classes=args.classes,
+            classes=1,
             activation=args.activation,
         ).to(DEVICE)
     return model
@@ -743,6 +717,9 @@ def train_and_evaluate(model, valDL2,optimizer, loss, scheduler, batchsize, augm
                     strength=(0.2, 0.7), 
                     always_apply=False, 
                     p=0.5),
+                A.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],),
                 ToTensorV2()
             ]
         )
@@ -804,34 +781,32 @@ def train_and_evaluate(model, valDL2,optimizer, loss, scheduler, batchsize, augm
                     sigma_limit=0, 
                     always_apply=False, 
                     p=0.5),
+                A.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],),
                 ToTensorV2()
                 ]
             )
     elif augment == 'small':
-        train_transform = A.Compose(
-            [
-                A.PadIfNeeded(
-                    min_height=args.minheight, 
-                    min_width=args.minwidth, 
-                    border_mode=4
-                ),
-                A.Resize(
-                    args.minheight, 
-                    args.minwidth),
-                A.RandomBrightnessContrast(
-                    brightness_limit=0.3, 
-                    contrast_limit=0.3, 
-                    p=0.5),
-                A.HorizontalFlip(
-                    p=0.5),
-                A.VerticalFlip(
-                    p=0.5),
-                A.MedianBlur(
-                    blur_limit=3, 
-                    always_apply=False, 
-                    p=0.1), ToTensorV2()
-            ]
-        )
+        train_transform = A.Compose([
+            A.PadIfNeeded(min_height=args.minheight, min_width=args.minwidth, border_mode=4),
+            A.Resize(height=args.minheight, width=args.minwidth),
+            A.Rotate(limit=35, p=1.0),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.1),
+            A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2,
+                            rotate_limit=30, p=0.5),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2,
+                        hue=0.2, always_apply=False, p=0.5),
+            A.Downscale(scale_min=0.25, scale_max=0.25,
+                        interpolation=0, always_apply=False, p=0.5),
+            A.Emboss(alpha=(0.2, 0.5), strength=(0.2, 0.7), always_apply=False, p=0.5),
+            A.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225],
+            ),
+            ToTensorV2(),
+        ],)
     # ─── DATA LOADERS ───────────────────────────────────────────────────────────────
 
     trainDL, testDL = get_loaders(False, TRAIN_IMG_DIR, TRAIN_MASK_DIR,
@@ -850,14 +825,14 @@ def train_and_evaluate(model, valDL2,optimizer, loss, scheduler, batchsize, augm
             train_cpu(trainDL, model, optimizer, loss, DEVICE, run, epoch)
         
         # check_accuracy(run, testDL, model, loss, DEVICE, is_validation=False)
-        lossv, iou, f1, prec, rec = check_accuracy(run, valDL2, model, loss, DEVICE, is_validation=True)
+        lossv, iou, f1, prec, rec, b_acc, fbeta, fnr = check_accuracy(run, valDL2, model, loss, DEVICE, is_validation=True)
             
         if args.scheduler == 'reducelronplataeu':
             scheduler.step(lossv)
         else: 
             scheduler.step()
         
-    return lossv, iou, f1, prec, rec, model, optimizer
+    return lossv, iou, f1, prec, rec, b_acc, fbeta, fnr, model, optimizer
 
 def objective(trial):
     """
@@ -866,19 +841,20 @@ def objective(trial):
     :param trial: A trial object from hyperopt.
     :return: loss, iou, f1, precision, recall
     """
+    
     params = {
-        "lr": trial.suggest_float("lr", args.lrlow, args.lrhigh),
-        "patience": trial.suggest_int("patience", args.patiencelow, args.patiencehigh),
-        "optim_epsilon": trial.suggest_float("optim_epsilon", args.optimepslow, args.optimepshigh),
-        "rop_epsilon": trial.suggest_float("rop_epsilon", args.ropepslow, args.ropepshigh),
-        "rop_factor": trial.suggest_float("rop_factor", args.ropfactorlow, args.ropfactorhigh),
-        "rop_threshold": trial.suggest_float("rop_threshold", args.ropthreshlow, args.ropthreshhigh),
-        "rop_threshold_mode": trial.suggest_categorical("rop_threshold_mode", ["abs"]),
-        "beta1": trial.suggest_float("beta1", args.beta1low, args.beta1high),
-        "beta2": trial.suggest_float("beta2", args.beta2low, args.beta2high),
-        "loss_eps": trial.suggest_float("loss_eps", args.lossepslow, args.lossepshigh),
-        "batchsize": trial.suggest_int("batchsize", args.batchsizelow, args.batchsizehigh),
-        "augment": trial.suggest_categorical("augment", [args.augment1, args.augment2]),
+        "lr": trial.suggest_loguniform("lr", args.lrlow, args.lrhigh),
+        "patience": trial.suggest_int("patience", patience_low, patience_high),
+        "optim_epsilon": trial.suggest_loguniform("optim_epsilon", args.optimepslow, args.optimepshigh),
+        "rop_epsilon": trial.suggest_loguniform("rop_epsilon", rop_eps_low, rop_eps_high),
+        "rop_factor": trial.suggest_loguniform("rop_factor", rop_factor_low, rop_factor_high),
+        "rop_threshold": trial.suggest_loguniform("rop_threshold", rop_threshold_low, rop_threshold_high),
+        "rop_threshold_mode": trial.suggest_categorical("rop_threshold_mode", ["abs", "rel"]),
+        "beta1": trial.suggest_loguniform("beta1", args.beta1low, args.beta1high),
+        "beta2": trial.suggest_loguniform("beta2", args.beta2low, args.beta2high),
+        "loss_eps": trial.suggest_loguniform("loss_eps", loss_eps_low, loss_eps_high),
+        "batchsize": trial.suggest_int("batchsize", batch_size_low, batch_size_high),
+        "augment": trial.suggest_categorical("augment", [augment1, augment2]),
     }
 
     global top_score
@@ -886,10 +862,10 @@ def objective(trial):
 
     optimizer1 = get_optimizer(model1, 
                               args.optim,
-                              optim_epsilon=params["optim_epsilon"], 
+                              optim_epsilon=1e-7, 
                               lr=params["lr"],
                               beta1=params["beta1"],
-                              beta2=params["beta2"],)
+                              beta2=params["beta2"])
     scheduler1 = get_scheduler(optimizer1, 
                               args.scheduler, 
                               patience=params["patience"], 
@@ -897,7 +873,9 @@ def objective(trial):
                               rop_factor=params["rop_factor"],
                               rop_threshold=params["rop_threshold"], 
                               rop_threshold_mode=params["rop_threshold_mode"])
-    loss1 = get_loss(args.loss, loss_eps=params["loss_eps"])
+    loss1 = get_loss(
+        args.loss, 
+        loss_eps=params["loss_eps"])
     
     val_transform = A.Compose(  # validation image transforms
         [
@@ -910,15 +888,21 @@ def objective(trial):
                                 args.valbatchsize, val_transform,
                                 val_transform, num_workers=args.numworkers, pin_memory=True)
     
-    lossv, iou, f1, prec, rec, model, optimizer = train_and_evaluate(model1, valDL2, optimizer1, loss1, scheduler1, params["batchsize"], params["augment"])
+    lossv, iou, f1, prec, rec, b_acc, fbeta, fnr, model, optimizer = train_and_evaluate(model1, valDL2, optimizer1, loss1, scheduler1, params["batchsize"], params["augment"])
     
-    run['scores/final/f1'].log(f1)
-    run['scores/final/precision'].log(prec)
-    run['scores/final/recall'].log(rec)
-    run['scores/final/iou'].log(iou)
-    run['scores/final/loss'].log(lossv)
+    if f1>1.0:
+        f1=0.0
+    
+    run['scores/trial/f1'].log(f1)
+    run['scores/trial/precision'].log(prec)
+    run['scores/trial/recall'].log(rec)
+    run['scores/trial/iou'].log(iou)
+    run['scores/trial/balanced_accuracy'].log(b_acc)
+    run['scores/trial/fbeta'].log(fbeta)
+    run['scores/trial/fpr'].log(fnr)
+    run['scores/trial/loss'].log(lossv)
 
-    if f1 > top_score:
+    if f1 > top_score and f1 < 1.0:
         top_score=f1
         torch.save({
                     'model_state_dict': model.state_dict(),
@@ -927,16 +911,21 @@ def objective(trial):
     
         run[f"model_checkpoints/bestmodel"].upload('{}binary_{}.pt'.format(MODEL_SAVE_DIR, args.model))
         
-        # validation
         save_predictions_as_imgs(
             valDL2,
             model,
-            run,
             folder=VAL_IMG_SAVE_DIR,
-            model_name=args.model,
             device=DEVICE,
-            is_validation=True,
         )
+        
+        run['scores/best/f1'].log(f1)
+        run['scores/best/precision'].log(prec)
+        run['scores/best/recall'].log(rec)
+        run['scores/best/iou'].log(iou)
+        run['scores/best/balanced_accuracy'].log(b_acc)
+        run['scores/best/fbeta'].log(fbeta)
+        run['scores/best/fpr'].log(fnr)
+        run['scores/best/loss'].log(lossv)
         
         val_paths = get_files(VAL_IMG_SAVE_DIR)
 
@@ -977,7 +966,7 @@ def main():
     study = optuna.create_study(
         sampler=sampler,
         pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=2, n_warmup_steps=5, interval_steps=3
+            n_startup_trials=5, n_warmup_steps=5, interval_steps=3
         ),directions=[args.minmax])
     study.optimize(func=objective, n_trials=args.trials, callbacks=[neptune_callback])
 

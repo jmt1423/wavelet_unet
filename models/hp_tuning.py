@@ -332,7 +332,6 @@ def check_accuracy(
             x = x.to(device)
             y = y.to(device).unsqueeze(1)
             y = y.to(torch.int64)
-            #x = x.permute(0,1,2,3) # ===========================================================================
             x = x.permute(0,1,2,3)
             preds = model(x.float().contiguous())  # get pixel predictions from image tensor
             
@@ -968,7 +967,9 @@ def objective(trial):
                               rop_factor=params["rop_factor"],
                               rop_threshold=params["rop_threshold"], 
                               rop_threshold_mode=params["rop_threshold_mode"])
-    loss1 = get_loss(args.loss, loss_eps=params["loss_eps"])
+    loss1 = get_loss(
+        args.loss, 
+        loss_eps=params["loss_eps"])
     
     val_transform = A.Compose(  # validation image transforms
         [
