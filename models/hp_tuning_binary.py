@@ -20,7 +20,19 @@ Software Citations:
 Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta,and Masanori Koyama. 2019.
 Optuna: A Next-generation Hyperparameter Optimization Framework. In KDD.
 
+Metrics:
+    Sensitivity: TP/(TP+FN)
+    Specificity: TN/(TN+FP)
+    Balanced Accuracy: (Sensitivity + Specificity)/2
+
+    Recall: TP/(TP+FN)
+    F1: 2*TP/(2*TP+FP+FN)
+    IOU: TP/(TP+FP+FN)
+    F2: 5*TP/(5*TP+4*FP+FN)
+    False Positive Rate: FP/(FP+TN)
+
 https://github.com/qubvel/segmentation_models.pytorch
+https://proceedings.neurips.cc/paper/2011/file/86e8f7ab32cfd12577bc2619bc635690-Paper.pdf
 """
 
 import numpy as np
@@ -862,7 +874,7 @@ def objective(trial):
 
     optimizer1 = get_optimizer(model1, 
                               args.optim,
-                              optim_epsilon=1e-7, 
+                              optim_epsilon=params["optim_epsilon"], 
                               lr=params["lr"],
                               beta1=params["beta1"],
                               beta2=params["beta2"])

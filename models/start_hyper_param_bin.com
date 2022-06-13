@@ -1,8 +1,8 @@
 #$ -S /bin/bash
 #$ -q short
 #$ -l ngpus=1
-#$ -l ncpus=3
-#$ -l h_vmem=150G
+#$ -l ncpus=2
+#$ -l h_vmem=100G
 #$ -l h_rt=11:00:00
 #$ -N hyper-parameter-optim
 
@@ -13,7 +13,7 @@ module add cuda/11.2v2
 source activate $global_storage/conda_environments/py3.8-coastal-segmentation
 
 NOW=$(date +%Y%m%d_%H%M%S)
-MODEL="wavelet-unet"
+MODEL="pspnet"
 EXPERIMENT="$NOW"
 TRAIN_IMG_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_train/'
 TRAIN_MASK_DIR='/storage/hpc/27/thomann/coastal_segmentation_data/current_data/binary_trainannot/'
@@ -66,31 +66,31 @@ ROP_MODE="min"  # min, max
 OPTIM_OBJECTIVE="f1" # recall, precision, f1, iou
 MINMAX="maximize" # min, max
 
-BATCHSIZE_LOW=4
-BATCHSIZE_HIGH=10
+BATCHSIZE_LOW=5
+BATCHSIZE_HIGH=20
 
 LR_LOW=1e-4
 LR_HIGH=1e-4
 
-PATIENCE_LOW=4
+PATIENCE_LOW=1
 PATIENCE_HIGH=15
 
 OPTIM_EPS_LOW=1e-7
 OPTIM_EPS_HIGH=1e-6
 
-ROP_FACTOR_LOW=0.3
-ROP_FACTOR_HIGH=0.9
+ROP_FACTOR_LOW=0.1
+ROP_FACTOR_HIGH=0.5
 
 ROP_EPS_LOW=1e-8
 ROP_EPS_HIGH=1e-4
 
-ROP_THRESH_LOW=1e-7
-ROP_THRESH_HIGH=1e-2
+ROP_THRESH_LOW=1e-5
+ROP_THRESH_HIGH=1e-1
 
-BETA1_LOW=0.95
+BETA1_LOW=0.9
 BETA1_HIGH=0.95
 
-BETA2_LOW=0.99
+BETA2_LOW=0.95
 BETA2_HIGH=0.99
 
 LOSS_EPS_LOW=1e-8
