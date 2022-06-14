@@ -25,10 +25,8 @@ class DwtPyramidBlock(nn.Module):
         self.og_size_list = og_size_list
 
         self.dwtList = []
-        # if torch.cuda.is_available():
+        
         self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode).cuda()
-        # else:
-        #     self.dwtf = DWTForward(J=self.J, wave=self.wave, mode=self.mode)
 
     def forward(self, x):
         """
@@ -39,11 +37,12 @@ class DwtPyramidBlock(nn.Module):
             yl, yh = self.dwtf(x.detach())  # get wavelet coefficients
             feat = torch.unbind(yh[0], dim=2)  # unbind scale 1 band
             feat0 = feat[0] # get features (yl, yh -> (lh, hl, hh))
-            #feat1 = feat[1]
-            #feat2 = feat[2]
+            feat1 = feat[1]
+            feat2 = feat[2]
             self.dwtList.append(yl)  # append to list for later use
-            #self.dwtList.append(feat1)
-            #self.dwtList.append(feat2)
+            self.dwtList.append(feat0)
+            self.dwtList.append(feat1)
+            self.dwtList.append(feat2)
             #self.dwtList.append(yl)
             self.depth += 1
             return self.forward(feat0)  # create next layer of pyramid
@@ -51,12 +50,17 @@ class DwtPyramidBlock(nn.Module):
             yl, yh = self.dwtf(x.detach())  # get final coefficients
             feat = torch.unbind(yh[0], dim=2)
             feat0 = feat[0]
-            #feat1 = feat[1]
-            #feat2 = feat[2]
+            feat1 = feat[1]
+            feat2 = feat[2]
             self.dwtList.append(yl)  # append to list for later use
-            #self.dwtList.append(feat1)
-            #self.dwtList.append(feat2)
+            self.dwtList.append(feat0)
+            self.dwtList.append(feat1)
+            self.dwtList.append(feat2)
             #self.dwtList.append(yl)
+            
+            print('====================================================')
+            print(self.dwtList[0].shape, self.dwtList[1].shape, self.dwtList[2].shape, self.dwtList[3].shape, self.dwtList[4].shape, self.dwtList[5].shape)
+            print('====================================================')
 
             for i in range(len(self.dwtList)):  # pad each element in list for concatenation later
                 p_size = int(self.get_pad_size(self.dwtList[i]))  # gets the variable needed for padding
@@ -70,23 +74,37 @@ class DwtPyramidBlock(nn.Module):
                     (p_size, p_size_1, p_size, p_size_1),
                     'constant',  # zero padding so constant value of 0's
                     0
-                )  # .contiguous()
+                ).contiguous()
             
             # after padding is done, now we can concat all tensor objects together
             final_pyramid = torch.cat((
                 self.dwtList[0],
                 self.dwtList[1],
                 self.dwtList[2],
-                #self.dwtList[3],
-                #self.dwtList[4],
-                #self.dwtList[5],
-                #self.dwtList[6],
-                #self.dwtList[7],
-                #self.dwtList[8],
-                #self.dwtList[9],
-                #self.dwtList[10],
-                #self.dwtList[11],
+                self.dwtList[3],
+                self.dwtList[4],
+                self.dwtList[5],
+                self.dwtList[6],
+                self.dwtList[7],
+                self.dwtList[8],
+                self.dwtList[9],
+                self.dwtList[10],
+                self.dwtList[11],
             ), dim=1)
+            # final_pyramid = torch.dstack((
+            #     self.dwtList[0],
+            #     self.dwtList[1],
+            #     self.dwtList[2],
+            #     self.dwtList[3],
+            #     self.dwtList[4],
+            #     self.dwtList[5],
+            #     self.dwtList[6],
+            #     self.dwtList[7],
+            #     self.dwtList[8],
+            #     self.dwtList[9],
+            #     self.dwtList[10],
+            #     self.dwtList[11],
+            # ))
             self.dwtList = []
             self.depth = 0  # same as above.
             return final_pyramid
@@ -100,7 +118,7 @@ class DwtPyramidBlock(nn.Module):
 
         Formula:
         Given two tensors of size [B_1, C_1, H_1, W_1] and
-        [B_2, C_2, H_2, H_3] -->
+        [B_2, C_2, H_2, H_2] -->
 
         to find the needed values to pad take:
 
@@ -134,6 +152,7 @@ class DoubleConv(nn.Module):
         """
         return self.conv(x)
 
+
 class LinearConv(nn.Module):
     """Docstring for LInearConv. """
     def __init__(self, in_channels, out_channels):
@@ -163,8 +182,11 @@ class UNET(nn.Module):
     """Docstring for UNET. """
     def __init__(
         self,
+        size1=16,
+        size2=16,
         in_channels=3,
         out_channels=1,
+        wavelet='haar',
         features=[64, 128, 256, 512],
     ):
         """TODO: to be defined.
@@ -179,15 +201,16 @@ class UNET(nn.Module):
         self.ups = nn.ModuleList()
         self.downs = nn.ModuleList()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.wavelet=wavelet
+        self.size1=size1
+        self.size2=size2
 
         
-        self.dwtF = DWTForward(J=3, mode='zero', wave='haar').cuda()
-        # else:
-        #     self.dwtF = DWTForward(J=3, mode='zero', wave='haar')
+        # self.dwtF = DWTForward(J=3, mode='zero', wave=wavelet).cuda()
 
-        self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave='haar', depth=0, og_size_list=[0, 0, 16, 16])
+        self.dwt_pyramid_block = DwtPyramidBlock(J=3, mode='zero', wave=self.wavelet, depth=0, og_size_list=[0, 0, self.size1, self.size2])
 
-        self.projection_layer = LinearConv(4096, 1024)
+        self.projection_layer = LinearConv(13312, 1024)  # 1024, 2048, 4096, 7168, 10240, 13312
 
         self.pretrained = models.resnext50_32x4d(pretrained=True)
 

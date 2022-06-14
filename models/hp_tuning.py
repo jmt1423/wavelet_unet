@@ -119,6 +119,9 @@ parser.add_argument('--batchsizelow', type=int, required=True)
 parser.add_argument('--batchsizehigh', type=int, required=True)
 parser.add_argument('--augment1', type=str, required=True)
 parser.add_argument('--augment2', type=str, required=True)
+parser.add_argument('--wavelet', type=str, required=True)
+parser.add_argument('--wavesize1', type=int, required=True)
+parser.add_argument('--wavesize2', type=int, required=True)
 
 args = parser.parse_args()
 
@@ -710,7 +713,8 @@ def get_model(model_name: str = "unet"):
             activation=args.activation,
         ).to(DEVICE)
     elif model_name == 'wavelet-unet':
-        model = UNET(in_channels=3, out_channels=args.classes).to(DEVICE)
+        model = UNET(size1=args.wavesize1, size2=args.wavesize2, in_channels=3, out_channels=args.classes, wavelet=args.wavelet).to(DEVICE)
+        run['parameters/MSWN/wavelet'] = args.wavelet
     elif model_name == 'manet':
         model = smp.MAnet(
             encoder_name=args.encoder,

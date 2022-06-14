@@ -13,7 +13,7 @@ module add cuda/11.2v2
 source activate $global_storage/conda_environments/py3.8-coastal-segmentation
 
 NOW=$(date +%Y%m%d_%H%M%S)
-MODEL="pspnet"
+MODEL="wavelet-unet"
 EXPERIMENT="$NOW"
 TRAIN_IMG_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/train/"
 TRAIN_MASK_DIR="/storage/hpc/27/thomann/coastal_segmentation_data/current_data/trainannot/"
@@ -50,10 +50,25 @@ NUMWORKERS=4
 TRIALS=100
 
 LOSS="Dice"  # SCE, Dice, Tversky
-# Optimizer
+
+#
+# ─── WAVELET PARAMETERS ─────────────────────────────────────────────────────────
+#
+
+    
+WAVELET="bior3.3" # sym9, db9, rbio6.8, coif5, bior6.8, sym8, bior3.3
+SIZE1=16
+SIZE2=16
+
+#
+# ─── OPTIMIZER PARAMETERS ───────────────────────────────────────────────────────
+#
+
+    
 ACTIVATION="softmax"  # sigmoid, softmax
 OPTIMIZER="AdamW_beta"  # Adam, AdamW, Adam_beta, AdamW_beta
 SCHEDULER="reducelronplataeu" # steplr, reducelronplataeu
+
 #
 # ─── SEARCH SPACE ───────────────────────────────────────────────────────────────
 #
@@ -129,7 +144,7 @@ args=(
     --trainimgdir $TRAIN_IMG_DIR --trainmaskdir $TRAIN_MASK_DIR --testimgdir $TEST_IMG_DIR 
     --testmaskdir $TEST_MASK_DIR --valimgdir $VAL_IMG_DIR --valmaskdir $VAL_MASK_DIR 
     --numworkers $NUMWORKERS --experiment $EXPERIMENT --model $MODEL --classes $CLASSES --optim $OPTIMIZER --loss $LOSS 
-    --scheduler $SCHEDULER --ropmode $ROP_MODE --ropcooldown $ROP_COOLDOWN --scesmooth $SCE_SMOOTH_FACTOR --scereduction $SCE_REDUCTION --trials $TRIALS --minmax $MINMAX --optimobjective $OPTIM_OBJECTIVE --lrlow $LR_LOW --lrhigh $LR_HIGH --patiencelow $PATIENCE_LOW --patiencehigh $PATIENCE_HIGH --optimepslow $OPTIM_EPS_LOW --optimepshigh $OPTIM_EPS_HIGH --ropfactorlow $ROP_FACTOR_LOW --ropfactorhigh $ROP_FACTOR_HIGH --ropepslow $ROP_EPS_LOW --ropepshigh $ROP_EPS_HIGH --ropthreshlow $ROP_THRESH_LOW --ropthreshhigh $ROP_THRESH_HIGH --beta1low $BETA1_LOW --beta1high $BETA1_HIGH --beta2low $BETA2_LOW --beta2high $BETA2_HIGH --lossepslow $LOSS_EPS_LOW --lossepshigh $LOSS_EPS_HIGH --batchsizelow $BATCHSIZE_LOW --batchsizehigh $BATCHSIZE_HIGH --augment1 $AUGMENT1 --augment2 $AUGMENT2
+    --scheduler $SCHEDULER --ropmode $ROP_MODE --ropcooldown $ROP_COOLDOWN --scesmooth $SCE_SMOOTH_FACTOR --scereduction $SCE_REDUCTION --trials $TRIALS --minmax $MINMAX --optimobjective $OPTIM_OBJECTIVE --lrlow $LR_LOW --lrhigh $LR_HIGH --patiencelow $PATIENCE_LOW --patiencehigh $PATIENCE_HIGH --optimepslow $OPTIM_EPS_LOW --optimepshigh $OPTIM_EPS_HIGH --ropfactorlow $ROP_FACTOR_LOW --ropfactorhigh $ROP_FACTOR_HIGH --ropepslow $ROP_EPS_LOW --ropepshigh $ROP_EPS_HIGH --ropthreshlow $ROP_THRESH_LOW --ropthreshhigh $ROP_THRESH_HIGH --beta1low $BETA1_LOW --beta1high $BETA1_HIGH --beta2low $BETA2_LOW --beta2high $BETA2_HIGH --lossepslow $LOSS_EPS_LOW --lossepshigh $LOSS_EPS_HIGH --batchsizelow $BATCHSIZE_LOW --batchsizehigh $BATCHSIZE_HIGH --augment1 $AUGMENT1 --augment2 $AUGMENT2 --wavelet $WAVELET --wavesize1 $SIZE1 --wavesize2 $SIZE2
 )
 
 python ./hp_tuning.py "${args[@]}"
